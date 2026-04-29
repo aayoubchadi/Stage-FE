@@ -27,6 +27,8 @@ import {
   resolveEffectivePermissions,
 } from '../lib/permissions.js';
 import { loadTenantContext } from '../lib/tenantContext.js';
+import { buildCompanyDemoSelect } from '../lib/companyCompatibility.js';
+import { buildUserPermissionsSelect } from '../lib/userCompatibility.js';
 
 const router = Router();
 
@@ -333,26 +335,30 @@ async function verifyGoogleIdToken(idToken) {
 
 async function findTenantUserByEmailInCompany(companyId, email) {
   const { rows } = await runWithCompanyScope(companyId, (client) =>
-    client.query(
+    (async () => {
+      const companyDemoSelect = await buildCompanyDemoSelect('c', 'company');
+      const userPermissionsSelect = await buildUserPermissionsSelect('u', 'permissions');
+
+      return client.query(
        `SELECT
          u.id,
          u.company_id,
          c.slug AS company_slug,
          c.name AS company_name,
-         c.is_demo AS company_is_demo,
-         c.demo_expires_at AS company_demo_expires_at,
+         ${companyDemoSelect},
          u.full_name,
          u.email::text AS email,
          u.role,
-         u.permissions,
+         ${userPermissionsSelect},
          u.is_active
        FROM users u
        JOIN companies c ON c.id = u.company_id
        WHERE u.email = $1
          AND u.company_id = $2
        LIMIT 1`,
-      [email, companyId]
-    )
+        [email, companyId]
+      );
+    })()
   );
 
   return rows[0] || null;
@@ -669,20 +675,22 @@ router.post('/login', loginRateLimiter, async (request, response, next) => {
         );
       }
 
-      const { rows } = await runWithCompanyScope(resolvedCompanyId, (client) =>
-        client.query(
+      const { rows } = await runWithCompanyScope(resolvedCompanyId, async (client) => {
+        const companyDemoSelect = await buildCompanyDemoSelect('c', 'company');
+        const userPermissionsSelect = await buildUserPermissionsSelect('u', 'permissions');
+
+        return client.query(
           `SELECT
              u.id,
              u.company_id,
              c.slug AS company_slug,
              c.name AS company_name,
-             c.is_demo AS company_is_demo,
-             c.demo_expires_at AS company_demo_expires_at,
+             ${companyDemoSelect},
              u.full_name,
              u.email::text AS email,
              u.password_hash,
              u.role,
-             u.permissions,
+             ${userPermissionsSelect},
              u.is_active
              ,sp.code AS plan_code
              ,sp.name AS plan_name
@@ -697,8 +705,8 @@ router.post('/login', loginRateLimiter, async (request, response, next) => {
              AND u.company_id = $2
            LIMIT 2`,
           [email, resolvedCompanyId]
-        )
-      );
+        );
+      });
 
       if (rows.length !== 1) {
         throw new HttpError(
@@ -902,19 +910,21 @@ router.post('/login/google', loginRateLimiter, async (request, response, next) =
         );
       }
 
-      const { rows } = await runWithCompanyScope(resolvedCompanyId, (client) =>
-        client.query(
+      const { rows } = await runWithCompanyScope(resolvedCompanyId, async (client) => {
+        const companyDemoSelect = await buildCompanyDemoSelect('c', 'company');
+        const userPermissionsSelect = await buildUserPermissionsSelect('u', 'permissions');
+
+        return client.query(
           `SELECT
              u.id,
              u.company_id,
              c.slug AS company_slug,
              c.name AS company_name,
-             c.is_demo AS company_is_demo,
-             c.demo_expires_at AS company_demo_expires_at,
+             ${companyDemoSelect},
              u.full_name,
              u.email::text AS email,
              u.role,
-             u.permissions,
+             ${userPermissionsSelect},
              u.is_active
              ,sp.code AS plan_code
              ,sp.name AS plan_name
@@ -929,8 +939,8 @@ router.post('/login/google', loginRateLimiter, async (request, response, next) =
              AND u.company_id = $2
            LIMIT 2`,
           [email, resolvedCompanyId]
-        )
-      );
+        );
+      });
 
       if (rows.length !== 1) {
         throw new HttpError(

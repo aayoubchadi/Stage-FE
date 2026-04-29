@@ -14,6 +14,7 @@ import {
   PERMISSION_PRESETS,
 } from '../lib/permissions.js';
 import { runWithCompanyScope } from '../lib/tenantContext.js';
+import { buildUserPermissionsSelect, buildUserPermissionsInsertFragments } from '../lib/userCompatibility.js';
 
 const router = Router();
 
@@ -259,6 +260,7 @@ router.get(
   requireTenantPermission('employees.view'),
   async (request, response, next) => {
     try {
+      const userPermissionsSelect = await buildUserPermissionsSelect('users', 'permissions');
       const { rows } = await runWithCompanyScope(
         request.tenantContext.company.id,
         (client) =>
@@ -269,7 +271,7 @@ router.get(
                full_name,
                email::text AS email,
                role,
-               permissions,
+               ${userPermissionsSelect},
                is_active,
                created_at,
                updated_at
@@ -298,6 +300,7 @@ router.post(
   requireTenantPermission('employees.manage'),
   async (request, response, next) => {
     try {
+      const userCreateFragments = await buildUserPermissionsInsertFragments();
       const fullName = normalizeValue(request.body.fullName);
       const email = normalizeEmail(request.body.email);
       const password = normalizeValue(request.body.password);
@@ -335,21 +338,20 @@ router.post(
 
       const passwordHash = await bcrypt.hash(password, 12);
 
+      const userInsertSql = userCreateFragments.insertColumns.includes('permissions')
+        ? `INSERT INTO users (company_id, full_name, email, password_hash, role, permissions)
+           VALUES ($1, $2, $3, $4, 'employee', $5::jsonb)
+           RETURNING id, company_id, full_name, email::text AS email, role, permissions, is_active, created_at, updated_at`
+        : `INSERT INTO users (company_id, full_name, email, password_hash, role)
+           VALUES ($1, $2, $3, $4, 'employee')
+           RETURNING id, company_id, full_name, email::text AS email, role, '{}'::jsonb AS permissions, is_active, created_at, updated_at`;
+      const userInsertParams = userCreateFragments.insertColumns.includes('permissions')
+        ? [request.tenantContext.company.id, fullName, email, passwordHash, '{}']
+        : [request.tenantContext.company.id, fullName, email, passwordHash];
+
       const { rows } = await runWithCompanyScope(
         request.tenantContext.company.id,
-        (client) =>
-          client.query(
-            `INSERT INTO users (company_id, full_name, email, password_hash, role, permissions)
-             VALUES ($1, $2, $3, $4, 'employee', $5::jsonb)
-             RETURNING id, company_id, full_name, email::text AS email, role, permissions, is_active, created_at, updated_at`,
-            [
-              request.tenantContext.company.id,
-              fullName,
-              email,
-              passwordHash,
-              JSON.stringify(permissions),
-            ]
-          )
+        (client) => client.query(userInsertSql, userInsertParams)
       );
 
       response.status(201).json({
@@ -431,8 +433,9 @@ router.patch(
       const { rows } = await runWithCompanyScope(
         request.tenantContext.company.id,
         async (client) => {
+          const userPermissionsSelect = await buildUserPermissionsSelect('users', 'permissions');
           const { rows: employeeRows } = await client.query(
-            `SELECT id, full_name, permissions
+            `SELECT id, full_name, ${userPermissionsSelect}
              FROM users
              WHERE id = $1
                AND company_id = $2
@@ -446,6 +449,10 @@ router.patch(
           }
 
           const existing = employeeRows[0];
+          const userHasPermissionsColumn = Object.prototype.hasOwnProperty.call(
+            existing,
+            'permissions'
+          );
           const mergedPermissions = hasPermissionUpdate
             ? resolveEmployeePermissions({
                 presetKey: request.body.presetKey,
@@ -453,22 +460,37 @@ router.patch(
               })
             : normalizePermissions(existing.permissions || {});
 
-          return client.query(
-            `UPDATE users
-             SET
-               full_name = $3,
-               permissions = $4::jsonb
-             WHERE id = $1
-               AND company_id = $2
-               AND role = 'employee'
-             RETURNING id, company_id, full_name, email::text AS email, role, permissions, is_active, created_at, updated_at`,
-            [
-              employeeId,
-              request.tenantContext.company.id,
-              hasNameUpdate ? nextFullName : existing.full_name,
-              JSON.stringify(mergedPermissions),
-            ]
-          );
+          const updateSql = userHasPermissionsColumn
+            ? `UPDATE users
+               SET
+                 full_name = $3,
+                 permissions = $4::jsonb
+               WHERE id = $1
+                 AND company_id = $2
+                 AND role = 'employee'
+               RETURNING id, company_id, full_name, email::text AS email, role, permissions, is_active, created_at, updated_at`
+            : `UPDATE users
+               SET
+                 full_name = $3
+               WHERE id = $1
+                 AND company_id = $2
+                 AND role = 'employee'
+               RETURNING id, company_id, full_name, email::text AS email, role, '{}'::jsonb AS permissions, is_active, created_at, updated_at`;
+
+          const updateParams = userHasPermissionsColumn
+            ? [
+                employeeId,
+                request.tenantContext.company.id,
+                hasNameUpdate ? nextFullName : existing.full_name,
+                JSON.stringify(mergedPermissions),
+              ]
+            : [
+                employeeId,
+                request.tenantContext.company.id,
+                hasNameUpdate ? nextFullName : existing.full_name,
+              ];
+
+          return client.query(updateSql, updateParams);
         }
       );
 

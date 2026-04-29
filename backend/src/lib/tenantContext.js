@@ -5,6 +5,8 @@ import {
   PERMISSION_KEYS,
   resolveEffectivePermissions,
 } from './permissions.js';
+import { buildUserPermissionsSelect } from './userCompatibility.js';
+import { buildCompanyDemoSelect } from './companyCompatibility.js';
 
 function toNumber(value, fallback = 0) {
   const parsed = Number(value);
@@ -47,6 +49,9 @@ export async function loadTenantContext({ companyId, userId }) {
   }
 
   return runWithCompanyScope(companyId, async (client) => {
+    const companyDemoSelect = await buildCompanyDemoSelect('c', 'company');
+    const userPermissionsSelect = await buildUserPermissionsSelect('u', 'permissions');
+
     const { rows: userRows } = await client.query(
       `SELECT
          u.id,
@@ -54,13 +59,12 @@ export async function loadTenantContext({ companyId, userId }) {
          u.full_name,
          u.email::text AS email,
          u.role,
-         u.permissions,
+         ${userPermissionsSelect},
          u.is_active,
          c.name AS company_name,
          c.slug AS company_slug,
          c.is_active AS company_is_active,
-         c.is_demo,
-         c.demo_expires_at,
+         ${companyDemoSelect},
          sp.code AS plan_code,
          sp.name AS plan_name,
          sp.max_employees,
@@ -144,7 +148,7 @@ export async function loadTenantContext({ companyId, userId }) {
         canExportReports: Boolean(row.can_export_reports),
         canUseAdvancedAnalytics: Boolean(row.can_use_advanced_analytics),
       },
-      capacity: {
+      metrics: {
         activeEmployees,
         totalEmployees: toNumber(metrics.total_employees, 0),
         maxEmployees,
@@ -152,6 +156,7 @@ export async function loadTenantContext({ companyId, userId }) {
       },
     };
   });
+
 }
 
 export function assertPermission(tenantContext, permissionKey) {

@@ -9,6 +9,11 @@ import {
   createPayPalOrder,
   voidPayPalAuthorization,
 } from '../lib/paypalClient.js';
+import {
+  buildCompanyCreateFragments,
+  buildCompanyDemoSelect,
+} from '../lib/companyCompatibility.js';
+import { buildUserPermissionsSelect, buildUserPermissionsInsertFragments } from '../lib/userCompatibility.js';
 import { env } from '../config/env.js';
 import { signAccessToken } from '../lib/authJwt.js';
 import {
@@ -178,6 +183,9 @@ async function getDemoPlan() {
 
 async function buildTenantLoginPayload({ companyId, userId }) {
   const tenantContext = await runWithCompanyScope(companyId, async (client) => {
+    const companyDemoSelect = await buildCompanyDemoSelect('c', 'company');
+    const userPermissionsSelect = await buildUserPermissionsSelect('u', 'permissions');
+
     const { rows } = await client.query(
       `SELECT
          u.id,
@@ -185,11 +193,10 @@ async function buildTenantLoginPayload({ companyId, userId }) {
          u.full_name,
          u.email::text AS email,
          u.role,
-         u.permissions,
+         ${userPermissionsSelect},
          c.slug AS company_slug,
          c.name AS company_name,
-         c.is_demo,
-         c.demo_expires_at,
+         ${companyDemoSelect},
          sp.code AS plan_code,
          sp.name AS plan_name,
          sp.max_employees,
@@ -466,6 +473,8 @@ router.post('/demo/paypal/orders/:orderId/verify', async (request, response, nex
       try {
         await client.query('BEGIN');
         await client.query("SELECT set_config('app.current_scope', 'platform', true)");
+        const companyCreateFragments = await buildCompanyCreateFragments();
+        const userCreateFragments = await buildUserPermissionsInsertFragments();
 
         const { rows: verificationRows } = await client.query(
           `SELECT id, status, company_id
@@ -490,26 +499,27 @@ router.post('/demo/paypal/orders/:orderId/verify', async (request, response, nex
         const uniqueCompanySlug = await ensureUniqueCompanySlug(client, normalizedCompanySlug);
 
         const { rows: companyRows } = await client.query(
-          `INSERT INTO companies (
-             name,
-             slug,
-             subscription_plan_id,
-             is_demo,
-             demo_expires_at
-           )
-           VALUES ($1, $2, $3, TRUE, NOW() + INTERVAL '14 days')
-           RETURNING id, name, slug, is_active, is_demo, demo_expires_at, created_at`,
+          `INSERT INTO companies (${companyCreateFragments.insertColumns})
+           VALUES (${companyCreateFragments.insertValues})
+           RETURNING ${companyCreateFragments.returningColumns}`,
           [companyName, uniqueCompanySlug, demoPlan.id]
         );
 
         const company = companyRows[0];
 
-        const { rows: userRows } = await client.query(
-          `INSERT INTO users (company_id, full_name, email, password_hash, role, permissions)
-           VALUES ($1, $2, $3, $4, 'company_admin', '{}'::jsonb)
-           RETURNING id, company_id, full_name, email::text AS email, role, permissions, is_active, created_at`,
-          [company.id, adminFullName, adminEmail, adminPasswordHash]
-        );
+        const userIsPermissionAware = userCreateFragments.insertColumns.includes('permissions');
+        const userInsertSql = userIsPermissionAware
+          ? `INSERT INTO users (company_id, full_name, email, password_hash, role, permissions)
+             VALUES ($1, $2, $3, $4, 'company_admin', $5::jsonb)
+             RETURNING id, company_id, full_name, email::text AS email, role, permissions, is_active, created_at`
+          : `INSERT INTO users (company_id, full_name, email, password_hash, role)
+             VALUES ($1, $2, $3, $4, 'company_admin')
+             RETURNING id, company_id, full_name, email::text AS email, role, '{}'::jsonb AS permissions, is_active, created_at`;
+        const userInsertParams = userIsPermissionAware
+          ? [company.id, adminFullName, adminEmail, adminPasswordHash, '{}']
+          : [company.id, adminFullName, adminEmail, adminPasswordHash];
+
+        const { rows: userRows } = await client.query(userInsertSql, userInsertParams);
 
         const user = userRows[0];
 
