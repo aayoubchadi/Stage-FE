@@ -1,3 +1,8 @@
+/* Tailwind CSS Imports */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   --bg: #f7fbff;
   --surface: #ffffff;
@@ -19,6 +24,16 @@
   --scrollbar-thumb-hover: linear-gradient(180deg, #7c9fff 0%, #1d4bd7 100%);
   --scrollbar-thumb-border: rgba(255, 255, 255, 0.9);
   color-scheme: light;
+}
+
+/* StockPro Chart Component Styling */
+[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+/* Chart container dark mode adjustments */
+[data-theme='dark'] [data-slot='chart'] {
+  --recharts-text: #e2e8f0;
 }
 
 * {

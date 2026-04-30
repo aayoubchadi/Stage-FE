@@ -5,6 +5,7 @@ import PageBackground from '../components/PageBackground';
 import { getSession, isAdminRole } from '../lib/authStore';
 import { useLanguage } from '../lib/i18n';
 import { getDashboardOverview } from '../services/platformApi';
+import StockProDashboardStats from '../components/StockProDashboardStats';
 
 function formatCurrency(amount, currencyCode = 'EUR') {
   return new Intl.NumberFormat(undefined, {
@@ -110,6 +111,10 @@ export default function AdminDashboardPage() {
 
         {isLoading ? <p className="dashboard-state">Loading dashboard metrics...</p> : null}
         {!isLoading && errorMessage ? <p className="form-message error">{errorMessage}</p> : null}
+
+        {!isLoading && !errorMessage ? (
+          <StockProDashboardStats />
+        ) : null}
 
         {!isLoading && !errorMessage && overview ? (
           <>
