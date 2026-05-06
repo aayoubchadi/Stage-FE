@@ -171,6 +171,23 @@ CREATE TABLE IF NOT EXISTS users (
   CONSTRAINT ck_users_permissions_is_object CHECK (jsonb_typeof(permissions) = 'object')
 );
 
+CREATE TABLE IF NOT EXISTS company_join_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  full_name VARCHAR(120) NOT NULL,
+  email CITEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ,
+  resolved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT ck_company_join_status CHECK (status IN ('pending', 'approved', 'rejected'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_company_join_pending_email
+  ON company_join_requests(company_id, email)
+  WHERE status = 'pending';
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_users_one_active_admin_per_company
   ON users(company_id)
   WHERE role = 'company_admin' AND is_active = TRUE;

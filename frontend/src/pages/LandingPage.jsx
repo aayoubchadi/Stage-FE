@@ -55,19 +55,19 @@ export default function LandingPage() {
             key: plan.code,
             code: plan.code,
             name: plan.name,
-            description: `Up to ${plan.maxEmployees} users included`,
+            description: t('landing.pricing.planDescription').replace('{count}', plan.maxEmployees),
             monthlyPriceCents: plan.monthlyPriceCents,
             currencyCode: plan.currencyCode,
             includedUsers: plan.maxEmployees,
-            cta: 'Pay with PayPal',
+            cta: t('landing.pricing.planCta'),
             features: [
-              `${plan.maxEmployees} active employee seats`,
+              t('landing.pricing.planSeatLabel').replace('{count}', plan.maxEmployees),
               plan.features?.canExportReports
-                ? 'Exports and reporting enabled'
-                : 'Core reporting suite',
+                ? t('landing.pricing.planExportOn')
+                : t('landing.pricing.planExportOff'),
               plan.features?.canUseAdvancedAnalytics
-                ? 'Advanced analytics included'
-                : 'Standard analytics included',
+                ? t('landing.pricing.planAnalyticsOn')
+                : t('landing.pricing.planAnalyticsOff'),
             ],
             popular: index === 1,
           }))
@@ -92,7 +92,7 @@ export default function LandingPage() {
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [t]);
 
   const featureSections = [
     {
@@ -118,16 +118,16 @@ export default function LandingPage() {
       mediaAlt: 'Features image placeholder two',
     },
     {
-      title: 'Gerez vos stocks efficacement',
-      intro: 'Suivez votre stock en temps reel (incrementation, decrementation).',
+      title: t('landing.stockOps.title'),
+      intro: t('landing.stockOps.intro'),
       items: [
-        'Suivez votre stock en temps reel (incrementation, decrementation).',
-        'Centralisez tous vos produits et services.',
-        'Fabriquez vos produits.',
-        'Creez des bons de livraisons.',
+        t('landing.stockOps.items.one'),
+        t('landing.stockOps.items.two'),
+        t('landing.stockOps.items.three'),
+        t('landing.stockOps.items.four'),
       ],
       mediaSrc: stockImage,
-      mediaAlt: 'Features image placeholder three',
+      mediaAlt: t('landing.stockOps.mediaAlt'),
     },
   ];
 
@@ -247,7 +247,7 @@ export default function LandingPage() {
               <h2>{t('landing.pricing.title')}</h2>
               <p>{t('landing.pricing.subtitle')}</p>
               <p className="lp-pricing-subnote">
-                Company admin account creation is secured through PayPal subscription checkout.
+                {t('landing.pricing.subnote')}
               </p>
               <div className="hero-actions">
                 <button
@@ -255,20 +255,20 @@ export default function LandingPage() {
                   className="btn btn-primary"
                   onClick={() => navigate('/demo-onboarding')}
                 >
-                  Start free demo
+                  {t('landing.pricing.startDemoCta')}
                 </button>
               </div>
             </div>
           </div>
 
           {pricingError ? <p className="form-message error">{pricingError}</p> : null}
-          {isPricingLoading ? <p className="lp-pricing-loading">Loading subscription plans...</p> : null}
+          {isPricingLoading ? <p className="lp-pricing-loading">{t('landing.pricing.loading')}</p> : null}
 
           <div className="lp-pricing-grid stagger-cards">
             <article className="lp-plan-card feature-card">
               <div className="lp-plan-head">
-                <h3>Demo Free</h3>
-                <p>14-day demo workspace with isolated tenant provisioning.</p>
+                <h3>{t('landing.pricing.plans.demo.name')}</h3>
+                <p>{t('landing.pricing.plans.demo.description')}</p>
               </div>
 
               <div className="lp-plan-price-wrap">
@@ -277,14 +277,14 @@ export default function LandingPage() {
                   <span> / {t('landing.pricing.perMonth')}</span>
                 </p>
                 <p className="lp-plan-unit">
-                  $1 temporary verification hold then immediate release
+                  {t('landing.pricing.demoHoldNote')}
                 </p>
               </div>
 
               <ul className="lp-plan-list">
-                <li>Dedicated demo company workspace</li>
-                <li>Company admin access included</li>
-                <li>Automatic 14-day expiration</li>
+                <li>{t('landing.pricing.plans.demo.featureOne')}</li>
+                <li>{t('landing.pricing.plans.demo.featureTwo')}</li>
+                <li>{t('landing.pricing.plans.demo.featureThree')}</li>
               </ul>
 
               <button
@@ -292,11 +292,11 @@ export default function LandingPage() {
                 className="btn btn-secondary lp-plan-cta"
                 onClick={() => navigate('/demo-onboarding')}
               >
-                Start free demo
+                {t('landing.pricing.plans.demo.cta')}
               </button>
             </article>
 
-            {pricingPlans.map((plan) => {
+            {pricingPlans.slice(0, 2).map((plan) => {
               const monthlyPriceCents = Number(plan.monthlyPriceCents || 0);
               const monthlyPrice = monthlyPriceCents / 100;
 
@@ -315,7 +315,7 @@ export default function LandingPage() {
                       <span> / {t('landing.pricing.perMonth')}</span>
                     </p>
                     <p className="lp-plan-unit">
-                      {`${plan.includedUsers} users • billed monthly`}
+                      {t('landing.pricing.planUnit').replace('{count}', plan.includedUsers)}
                     </p>
                   </div>
 

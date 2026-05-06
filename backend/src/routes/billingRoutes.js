@@ -323,6 +323,45 @@ function mapPlanRow(plan) {
   };
 }
 
+function getFallbackPlans() {
+  return [
+    {
+      code: 'starter_20',
+      name: 'Starter 20',
+      monthlyPriceCents: 7900,
+      currencyCode: 'EUR',
+      maxEmployees: 20,
+      features: {
+        canExportReports: false,
+        canUseAdvancedAnalytics: false,
+      },
+    },
+    {
+      code: 'growth_50',
+      name: 'Growth 50',
+      monthlyPriceCents: 14900,
+      currencyCode: 'EUR',
+      
+      maxEmployees: 50,
+      features: {
+        canExportReports: true,
+        canUseAdvancedAnalytics: false,
+      },
+    },
+    {
+      code: 'enterprise_150',
+      name: 'Enterprise 150',
+      monthlyPriceCents: 29900,
+      currencyCode: 'EUR',
+      maxEmployees: 150,
+      features: {
+        canExportReports: true,
+        canUseAdvancedAnalytics: true,
+      },
+    },
+  ];
+}
+
 router.get('/plans', async (_request, response, next) => {
   try {
     const { rows } = await query(
@@ -346,7 +385,12 @@ router.get('/plans', async (_request, response, next) => {
       },
     });
   } catch (error) {
-    next(error);
+    response.json({
+      data: {
+        plans: getFallbackPlans(),
+      },
+      warning: 'FALLBACK_PLANS_USED',
+    });
   }
 });
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import PageBackground from '../components/PageBackground';
 import {
@@ -11,6 +11,7 @@ import { loginRequest } from '../services/authApi';
 import { getDashboardPathForRole, saveSession } from '../lib/authStore';
 
 const SPECIAL_CHAR_REGEX = /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/;
+const CHECKOUT_STORAGE_KEY = 'company-admin-checkout';
 
 function formatPrice(amountCents, currencyCode) {
   return new Intl.NumberFormat(undefined, {
@@ -18,16 +19,6 @@ function formatPrice(amountCents, currencyCode) {
     currency: currencyCode || 'EUR',
     maximumFractionDigits: 0,
   }).format((Number(amountCents) || 0) / 100);
-}
-
-function slugify(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/-{2,}/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
 }
 
 function validateAdminPassword(password, email) {
@@ -109,7 +100,6 @@ function getCheckoutValidationError({ selectedPlan, form }) {
 
 export default function CompanyAdminCheckoutPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const paypalButtonsRef = useRef(null);
   const paypalButtonsInstanceRef = useRef(null);
   const formRef = useRef({
@@ -129,7 +119,6 @@ export default function CompanyAdminCheckoutPage() {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
   const [isCapturing, setIsCapturing] = useState(false);
-  const [hasEditedSlug, setHasEditedSlug] = useState(false);
   const [form, setForm] = useState({
     companyName: '',
     companySlug: '',
@@ -139,8 +128,7 @@ export default function CompanyAdminCheckoutPage() {
     adminPasswordConfirm: '',
   });
 
-  const selectedPlanCodeFromUrl = searchParams.get('plan') || '';
-  const [selectedPlanCode, setSelectedPlanCode] = useState(selectedPlanCodeFromUrl);
+  const [selectedPlanCode, setSelectedPlanCode] = useState('');
   const paypalClientId = String(import.meta.env.VITE_PAYPAL_CLIENT_ID || '').trim();
 
   const selectedPlan = useMemo(
@@ -148,38 +136,36 @@ export default function CompanyAdminCheckoutPage() {
     [plans, selectedPlanCode]
   );
 
-  const passwordErrors = useMemo(
-    () => validateAdminPassword(form.adminPassword, form.adminEmail),
-    [form.adminPassword, form.adminEmail]
-  );
-
-  const isFormValid = useMemo(() => {
-    if (!selectedPlan) {
-      return false;
-    }
-
-    if (!form.companyName.trim() || !form.adminFullName.trim() || !form.adminEmail.trim()) {
-      return false;
-    }
-
-    if (!form.adminPassword || !form.adminPasswordConfirm) {
-      return false;
-    }
-
-    if (passwordErrors.length > 0) {
-      return false;
-    }
-
-    if (form.adminPassword !== form.adminPasswordConfirm) {
-      return false;
-    }
-
-    return true;
-  }, [form, passwordErrors, selectedPlan]);
 
   useEffect(() => {
-    formRef.current = form;
-  }, [form]);
+    const stored = sessionStorage.getItem(CHECKOUT_STORAGE_KEY);
+    if (!stored) {
+      navigate('/company-admin-checkout');
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(stored);
+      if (!parsed?.planCode || !parsed?.companyName || !parsed?.adminEmail) {
+        navigate('/company-admin-checkout');
+        return;
+      }
+
+      setSelectedPlanCode(parsed.planCode);
+      const nextForm = {
+        companyName: parsed.companyName || '',
+        companySlug: parsed.companySlug || '',
+        adminFullName: parsed.adminFullName || '',
+        adminEmail: parsed.adminEmail || '',
+        adminPassword: parsed.adminPassword || '',
+        adminPasswordConfirm: parsed.adminPassword || '',
+      };
+      setForm(nextForm);
+      formRef.current = nextForm;
+    } catch {
+      navigate('/company-admin-checkout');
+    }
+  }, [navigate]);
 
   useEffect(() => {
     selectedPlanRef.current = selectedPlan;
@@ -199,12 +185,6 @@ export default function CompanyAdminCheckoutPage() {
         }
 
         setPlans(fetchedPlans);
-
-        if (selectedPlanCodeFromUrl) {
-          setSelectedPlanCode(selectedPlanCodeFromUrl);
-        } else if (fetchedPlans[0]?.code) {
-          setSelectedPlanCode(fetchedPlans[0].code);
-        }
       } catch (error) {
         if (!isActive) {
           return;
@@ -224,18 +204,7 @@ export default function CompanyAdminCheckoutPage() {
     return () => {
       isActive = false;
     };
-  }, [selectedPlanCodeFromUrl]);
-
-  useEffect(() => {
-    if (hasEditedSlug) {
-      return;
-    }
-
-    setForm((current) => ({
-      ...current,
-      companySlug: slugify(current.companyName),
-    }));
-  }, [form.companyName, hasEditedSlug]);
+  }, []);
 
   useEffect(() => {
     if (!paypalClientId || !selectedPlan) {
@@ -487,141 +456,25 @@ export default function CompanyAdminCheckoutPage() {
       <main className="section section-shell checkout-main">
         <section className="checkout-wrap">
           <p className="eyebrow">Company Admin Subscription</p>
-          <h1>Create Your Company Admin By Subscription</h1>
+          <h1>Complete payment</h1>
           <p>
-            Company admin accounts are created only after a successful PayPal payment.
-            Your payment instantly provisions your company workspace and admin access.
+            Your payment confirms the company admin subscription and completes provisioning.
           </p>
 
           <div className="checkout-grid">
             <article className="checkout-panel">
-              <h2>Company Setup</h2>
+              <h2>Payment</h2>
 
-              {isPlansLoading ? (
-                <p>Loading plans...</p>
-              ) : (
-                <div className="checkout-plan-picker" role="radiogroup" aria-label="Select plan">
-                  {plans.map((plan) => {
-                    const isSelected = selectedPlan?.code === plan.code;
-
-                    return (
-                      <button
-                        key={plan.code}
-                        type="button"
-                        className={`checkout-plan-option${isSelected ? ' is-selected' : ''}`}
-                        aria-pressed={isSelected}
-                        onClick={() => setSelectedPlanCode(plan.code)}
-                      >
-                        <strong>{plan.name}</strong>
-                        <span>{formatPrice(plan.monthlyPriceCents, plan.currencyCode)} / month</span>
-                        <small>{plan.maxEmployees} users included</small>
-                      </button>
-                    );
-                  })}
+              {isPlansLoading ? <p>Loading plans...</p> : null}
+              {selectedPlan ? (
+                <div className="checkout-plan-picker" role="radiogroup" aria-label="Selected plan">
+                  <div className="checkout-plan-option is-selected">
+                    <strong>{selectedPlan.name}</strong>
+                    <span>{formatPrice(selectedPlan.monthlyPriceCents, selectedPlan.currencyCode)} / month</span>
+                    <small>{selectedPlan.maxEmployees} users included</small>
+                  </div>
                 </div>
-              )}
-
-              <form className="checkout-form" onSubmit={(event) => event.preventDefault()}>
-                <label>
-                  Company name
-                  <input
-                    type="text"
-                    value={form.companyName}
-                    onChange={(event) => {
-                      setForm((current) => ({
-                        ...current,
-                        companyName: event.target.value,
-                      }));
-                    }}
-                    placeholder="Acme Logistics"
-                    required
-                  />
-                </label>
-
-                <label>
-                  Company slug (optional)
-                  <input
-                    type="text"
-                    value={form.companySlug}
-                    onChange={(event) => {
-                      setHasEditedSlug(true);
-                      setForm((current) => ({
-                        ...current,
-                        companySlug: slugify(event.target.value),
-                      }));
-                    }}
-                    placeholder="acme-logistics"
-                  />
-                </label>
-
-                <label>
-                  Admin full name
-                  <input
-                    type="text"
-                    value={form.adminFullName}
-                    onChange={(event) => {
-                      setForm((current) => ({
-                        ...current,
-                        adminFullName: event.target.value,
-                      }));
-                    }}
-                    placeholder="Jane Founder"
-                    required
-                  />
-                </label>
-
-                <label>
-                  Admin email
-                  <input
-                    type="email"
-                    value={form.adminEmail}
-                    onChange={(event) => {
-                      setForm((current) => ({
-                        ...current,
-                        adminEmail: event.target.value,
-                      }));
-                    }}
-                    placeholder="admin@company.com"
-                    required
-                  />
-                </label>
-
-                <label>
-                  Admin password
-                  <input
-                    type="password"
-                    value={form.adminPassword}
-                    onChange={(event) => {
-                      setForm((current) => ({
-                        ...current,
-                        adminPassword: event.target.value,
-                      }));
-                    }}
-                    placeholder="Strong password"
-                    required
-                  />
-                </label>
-
-                <label>
-                  Confirm admin password
-                  <input
-                    type="password"
-                    value={form.adminPasswordConfirm}
-                    onChange={(event) => {
-                      setForm((current) => ({
-                        ...current,
-                        adminPasswordConfirm: event.target.value,
-                      }));
-                    }}
-                    placeholder="Repeat password"
-                    required
-                  />
-                </label>
-
-                <small className="checkout-policy-note">
-                  Password must be 12-72 chars with uppercase, lowercase, number, and special character.
-                </small>
-              </form>
+              ) : null}
             </article>
 
             <aside className="checkout-panel checkout-summary-panel">
@@ -632,6 +485,10 @@ export default function CompanyAdminCheckoutPage() {
                   <div className="checkout-summary-row">
                     <span>Plan</span>
                     <strong>{selectedPlan.name}</strong>
+                  </div>
+                  <div className="checkout-summary-row">
+                    <span>Company</span>
+                    <strong>{form.companyName}</strong>
                   </div>
                   <div className="checkout-summary-row">
                     <span>Monthly billing</span>
@@ -654,22 +511,6 @@ export default function CompanyAdminCheckoutPage() {
                 <p className="form-message error">
                   Missing VITE_PAYPAL_CLIENT_ID. Add it to your frontend environment.
                 </p>
-              ) : null}
-
-              {!isFormValid ? (
-                <p className="checkout-paypal-hint">
-                  Complete all fields and confirm password to unlock PayPal checkout.
-                </p>
-              ) : null}
-
-              {passwordErrors.length > 0 ? (
-                <p className="form-message error">
-                  Password policy: {passwordErrors.join(', ')}
-                </p>
-              ) : null}
-
-              {form.adminPassword && form.adminPasswordConfirm && form.adminPassword !== form.adminPasswordConfirm ? (
-                <p className="form-message error">Passwords do not match.</p>
               ) : null}
 
               <div className="checkout-paypal-slot" ref={paypalButtonsRef} aria-busy={isCapturing} />

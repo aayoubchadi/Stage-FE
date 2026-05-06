@@ -175,6 +175,50 @@ export async function getDashboardOverview({ accessToken }) {
   return payload?.data;
 }
 
+export async function approveJoinRequest({ accessToken, requestId }) {
+  if (!requestId) {
+    throw new Error('Request id is required');
+  }
+
+  const { response, payload } = await fetchApiEndpoint(
+    `/api/v1/company/join-requests/${encodeURIComponent(requestId)}/approve`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(resolveErrorMessage(payload, 'Unable to approve request'));
+  }
+
+  return payload?.data;
+}
+
+export async function rejectJoinRequest({ accessToken, requestId }) {
+  if (!requestId) {
+    throw new Error('Request id is required');
+  }
+
+  const { response, payload } = await fetchApiEndpoint(
+    `/api/v1/company/join-requests/${encodeURIComponent(requestId)}/reject`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(resolveErrorMessage(payload, 'Unable to reject request'));
+  }
+
+  return payload?.data;
+}
+
 
 export async function createDemoVerificationOrder() {
   const { response, payload } = await fetchApiEndpoint('/api/v1/billing/demo/paypal/orders', {

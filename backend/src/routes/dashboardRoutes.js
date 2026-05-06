@@ -167,6 +167,20 @@ async function buildTenantOverview(companyId) {
       [companyId]
     );
 
+    const { rows: joinRequestRows } = await client.query(
+      `SELECT
+         id,
+         full_name,
+         email::text AS email,
+         requested_at
+       FROM company_join_requests
+       WHERE company_id = $1
+         AND status = 'pending'
+       ORDER BY requested_at DESC
+       LIMIT 20`,
+      [companyId]
+    );
+
     const userMetrics = userMetricRows[0] || {};
     const productMetrics = productMetricRows[0] || {};
     const movementMetrics = movementMetricRows[0] || {};
@@ -242,6 +256,12 @@ async function buildTenantOverview(companyId) {
         quantityInStock: toNumber(row.quantity_in_stock),
         unitPrice: toNumber(row.unit_price),
         stockValue: toNumber(row.stock_value),
+      })),
+      pendingJoinRequests: joinRequestRows.map((row) => ({
+        id: row.id,
+        fullName: row.full_name,
+        email: row.email,
+        requestedAt: row.requested_at,
       })),
     };
   });

@@ -231,6 +231,107 @@ function parseCsvText(csvText) {
 
 router.use(requireAuth, requireTenantAccess);
 
+router.post(
+  '/join-requests/:requestId/approve',
+  requireTenantPermission('employees.manage'),
+  async (request, response, next) => {
+    try {
+      const requestId = normalizeValue(request.params.requestId);
+
+      if (!isUuid(requestId)) {
+        throw new HttpError(400, 'COMPANY_VALIDATION_ERROR', 'Invalid request id');
+      }
+
+      const companyId = request.tenantContext.company.id;
+
+      await runWithCompanyScope(companyId, async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, user_id, status
+           FROM company_join_requests
+           WHERE id = $1 AND company_id = $2
+           LIMIT 1`,
+          [requestId, companyId]
+        );
+
+        if (rows.length !== 1) {
+          throw new HttpError(404, 'COMPANY_REQUEST_NOT_FOUND', 'Join request not found');
+        }
+
+        if (rows[0].status !== 'pending') {
+          throw new HttpError(409, 'COMPANY_REQUEST_RESOLVED', 'Join request already resolved');
+        }
+
+        await client.query(
+          `UPDATE users
+           SET is_active = TRUE
+           WHERE id = $1 AND company_id = $2`,
+          [rows[0].user_id, companyId]
+        );
+
+        await client.query(
+          `UPDATE company_join_requests
+           SET status = 'approved',
+               resolved_at = NOW(),
+               resolved_by = $3
+           WHERE id = $1 AND company_id = $2`,
+          [requestId, companyId, request.auth.userId]
+        );
+      });
+
+      response.json({ data: { status: 'approved' } });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.post(
+  '/join-requests/:requestId/reject',
+  requireTenantPermission('employees.manage'),
+  async (request, response, next) => {
+    try {
+      const requestId = normalizeValue(request.params.requestId);
+
+      if (!isUuid(requestId)) {
+        throw new HttpError(400, 'COMPANY_VALIDATION_ERROR', 'Invalid request id');
+      }
+
+      const companyId = request.tenantContext.company.id;
+
+      await runWithCompanyScope(companyId, async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, status
+           FROM company_join_requests
+           WHERE id = $1 AND company_id = $2
+           LIMIT 1`,
+          [requestId, companyId]
+        );
+
+        if (rows.length !== 1) {
+          throw new HttpError(404, 'COMPANY_REQUEST_NOT_FOUND', 'Join request not found');
+        }
+
+        if (rows[0].status !== 'pending') {
+          throw new HttpError(409, 'COMPANY_REQUEST_RESOLVED', 'Join request already resolved');
+        }
+
+        await client.query(
+          `UPDATE company_join_requests
+           SET status = 'rejected',
+               resolved_at = NOW(),
+               resolved_by = $3
+           WHERE id = $1 AND company_id = $2`,
+          [requestId, companyId, request.auth.userId]
+        );
+      });
+
+      response.json({ data: { status: 'rejected' } });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 router.get('/context', async (request, response, next) => {
   try {
     response.json({
@@ -455,9 +556,9 @@ router.patch(
           );
           const mergedPermissions = hasPermissionUpdate
             ? resolveEmployeePermissions({
-                presetKey: request.body.presetKey,
-                permissions: request.body.permissions,
-              })
+              presetKey: request.body.presetKey,
+              permissions: request.body.permissions,
+            })
             : normalizePermissions(existing.permissions || {});
 
           const updateSql = userHasPermissionsColumn
@@ -479,16 +580,16 @@ router.patch(
 
           const updateParams = userHasPermissionsColumn
             ? [
-                employeeId,
-                request.tenantContext.company.id,
-                hasNameUpdate ? nextFullName : existing.full_name,
-                JSON.stringify(mergedPermissions),
-              ]
+              employeeId,
+              request.tenantContext.company.id,
+              hasNameUpdate ? nextFullName : existing.full_name,
+              JSON.stringify(mergedPermissions),
+            ]
             : [
-                employeeId,
-                request.tenantContext.company.id,
-                hasNameUpdate ? nextFullName : existing.full_name,
-              ];
+              employeeId,
+              request.tenantContext.company.id,
+              hasNameUpdate ? nextFullName : existing.full_name,
+            ];
 
           return client.query(updateSql, updateParams);
         }

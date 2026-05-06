@@ -4,7 +4,7 @@ import Header from '../components/Header';
 import PageBackground from '../components/PageBackground';
 import { getSession, isAdminRole } from '../lib/authStore';
 import { useLanguage } from '../lib/i18n';
-import { getDashboardOverview } from '../services/platformApi';
+import { approveJoinRequest, getDashboardOverview, rejectJoinRequest } from '../services/platformApi';
 import StockProDashboardStats from '../components/StockProDashboardStats';
 
 function formatCurrency(amount, currencyCode = 'EUR') {
@@ -30,6 +30,9 @@ export default function AdminDashboardPage() {
   const [overview, setOverview] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
+  const [actionType, setActionType] = useState('');
+  const [pendingActionId, setPendingActionId] = useState('');
   const navigate = useNavigate();
 
   const userDisplayName = useMemo(() => session?.fullName || session?.user?.fullName || 'Admin', [session]);
@@ -90,6 +93,48 @@ export default function AdminDashboardPage() {
   const isPlatformScope = overview?.scope === 'platform';
   const tenantMetrics = overview?.metrics || {};
   const platformMetrics = overview?.metrics || {};
+  const pendingJoinRequests = overview?.pendingJoinRequests || [];
+
+  const handleRequestAction = async (requestId, action) => {
+    if (!session?.accessToken) {
+      setActionMessage('Missing session token. Please log in again.');
+      setActionType('error');
+      return;
+    }
+
+    setPendingActionId(requestId);
+    setActionMessage('');
+    setActionType('');
+
+    try {
+      if (action === 'approve') {
+        await approveJoinRequest({ accessToken: session.accessToken, requestId });
+      } else {
+        await rejectJoinRequest({ accessToken: session.accessToken, requestId });
+      }
+
+      setOverview((current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          pendingJoinRequests: (current.pendingJoinRequests || []).filter(
+            (request) => request.id !== requestId
+          ),
+        };
+      });
+
+      setActionMessage(action === 'approve' ? 'Request approved.' : 'Request rejected.');
+      setActionType('success');
+    } catch (error) {
+      setActionMessage(error.message || 'Unable to update request.');
+      setActionType('error');
+    } finally {
+      setPendingActionId('');
+    }
+  };
 
   return (
     <>
@@ -111,6 +156,9 @@ export default function AdminDashboardPage() {
 
         {isLoading ? <p className="dashboard-state">Loading dashboard metrics...</p> : null}
         {!isLoading && errorMessage ? <p className="form-message error">{errorMessage}</p> : null}
+        {!isLoading && actionMessage ? (
+          <p className={`form-message ${actionType}`}>{actionMessage}</p>
+        ) : null}
 
         {!isLoading && !errorMessage ? (
           <StockProDashboardStats />
@@ -164,6 +212,40 @@ export default function AdminDashboardPage() {
 
                 <section className="dashboard-grid dashboard-grid-split">
                   <article className="dashboard-box dashboard-list-box">
+                    <h3>Pending access requests</h3>
+                    {pendingJoinRequests.length === 0 ? (
+                      <p className="dashboard-empty">No pending requests.</p>
+                    ) : (
+                      <ul className="dashboard-list">
+                        {pendingJoinRequests.map((request) => (
+                          <li key={request.id}>
+                            <strong>{request.fullName}</strong>
+                            <span>{request.email} • {formatDate(request.requestedAt)}</span>
+                            <div className="dashboard-actions">
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                disabled={pendingActionId === request.id}
+                                onClick={() => handleRequestAction(request.id, 'approve')}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                disabled={pendingActionId === request.id}
+                                onClick={() => handleRequestAction(request.id, 'reject')}
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </article>
+
+                  <article className="dashboard-box dashboard-list-box">
                     <h3>Low stock alerts</h3>
                     <ul className="dashboard-list">
                       {(overview.lowStockProducts || []).map((product) => (
@@ -174,7 +256,9 @@ export default function AdminDashboardPage() {
                       ))}
                     </ul>
                   </article>
+                </section>
 
+                <section className="dashboard-grid dashboard-grid-split">
                   <article className="dashboard-box dashboard-list-box">
                     <h3>Recent stock movements</h3>
                     <ul className="dashboard-list">
@@ -182,6 +266,18 @@ export default function AdminDashboardPage() {
                         <li key={movement.id}>
                           <strong>{movement.productName} • {movement.movementType}</strong>
                           <span>{movement.quantity} units • {formatDate(movement.createdAt)} • by {movement.movedByName}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+
+                  <article className="dashboard-box dashboard-list-box">
+                    <h3>Top products</h3>
+                    <ul className="dashboard-list">
+                      {(overview.topProducts || []).map((product) => (
+                        <li key={product.id}>
+                          <strong>{product.name} ({product.sku})</strong>
+                          <span>{product.quantityInStock} units • {formatCurrency(product.stockValue || 0, overview.plan?.currencyCode || 'EUR')}</span>
                         </li>
                       ))}
                     </ul>

@@ -151,9 +151,9 @@ export async function googleLoginRequest({ idToken, accountScope, companyId }) {
   return payload?.data;
 }
 
-export async function registerRequest({ companyId, fullName, email, password, role }) {
+export async function registerRequest({ companyName, fullName, email, password, role }) {
   const body = {
-    companyId,
+    companyName,
     fullName,
     email,
     password,
@@ -178,13 +178,13 @@ export async function registerRequest({ companyId, fullName, email, password, ro
   return payload?.data;
 }
 
-export async function registerGoogleRequest({ idToken, companyId }) {
+export async function registerGoogleRequest({ idToken, companyName }) {
   const body = {
     idToken,
   };
 
-  if (companyId) {
-    body.companyId = companyId;
+  if (companyName) {
+    body.companyName = companyName;
   }
 
   const { response, payload } = await fetchAuthEndpoint('/api/v1/auth/register/google', {

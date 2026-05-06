@@ -72,6 +72,39 @@ function isDemoExpired(demoExpiresAt) {
   return new Date(demoExpiresAt).getTime() <= Date.now();
 }
 
+async function findCompanyByName(companyName) {
+  const normalizedName = normalizeValue(companyName).toLowerCase();
+
+  if (!normalizedName) {
+    return null;
+  }
+
+  const { rows } = await query(
+    `SELECT id, name, slug
+     FROM companies
+     WHERE is_active = TRUE
+       AND (LOWER(name) = $1 OR LOWER(slug) = $1)
+     LIMIT 1`,
+    [normalizedName]
+  );
+
+  return rows[0] || null;
+}
+
+async function findPendingJoinRequest({ companyId, userId, email }) {
+  const { rows } = await query(
+    `SELECT id
+     FROM company_join_requests
+     WHERE company_id = $1
+       AND status = 'pending'
+       AND (user_id = $2 OR email = $3)
+     LIMIT 1`,
+    [companyId, userId, email]
+  );
+
+  return rows[0] || null;
+}
+
 function buildTenantUserPayload(user) {
   const effectivePermissions = resolveEffectivePermissions(
     user.role,
@@ -340,7 +373,7 @@ async function findTenantUserByEmailInCompany(companyId, email) {
       const userPermissionsSelect = await buildUserPermissionsSelect('u', 'permissions');
 
       return client.query(
-       `SELECT
+        `SELECT
          u.id,
          u.company_id,
          c.slug AS company_slug,
@@ -366,29 +399,34 @@ async function findTenantUserByEmailInCompany(companyId, email) {
 
 router.post('/register', registerRateLimiter, async (request, response, next) => {
   let resolvedCompanyId = null;
+  let resolvedCompany = null;
 
   try {
-    throw new HttpError(
-      403,
-      'AUTH_PUBLIC_SIGNUP_DISABLED',
-      'Public employee sign-up is disabled. Employees must be created by a company admin.'
-    );
-
-    const companyId = normalizeValue(request.body.companyId);
+    const companyName = normalizeValue(request.body.companyName);
     const fullName = normalizeValue(request.body.fullName);
     const email = normalizeEmail(request.body.email);
     const password = normalizeValue(request.body.password);
     const role = normalizeRole(request.body.role);
 
-    if (!fullName || !email || !password) {
+    if (!companyName || !fullName || !email || !password) {
       throw new HttpError(
         400,
         'AUTH_VALIDATION_ERROR',
-        'fullName, email, and password are required'
+        'companyName, fullName, email, and password are required'
       );
     }
 
-    resolvedCompanyId = await resolveTenantCompanyIdForRegister(companyId);
+    resolvedCompany = await findCompanyByName(companyName);
+
+    if (!resolvedCompany) {
+      throw new HttpError(
+        404,
+        'AUTH_COMPANY_NOT_FOUND',
+        'Company not found'
+      );
+    }
+
+    resolvedCompanyId = resolvedCompany.id;
 
     if (fullName.length < 2 || fullName.length > 120) {
       throw new HttpError(
@@ -420,42 +458,113 @@ router.post('/register', registerRateLimiter, async (request, response, next) =>
     const passwordHash = await bcrypt.hash(password, 12);
 
     try {
-      const { rows } = await runWithCompanyScope(resolvedCompanyId, (client) =>
-        client.query(
-          `INSERT INTO users (company_id, full_name, email, password_hash, role)
-           VALUES ($1, $2, $3, $4, $5)
-           RETURNING id, company_id, full_name, email::text AS email, role, is_active, created_at`,
-          [resolvedCompanyId, fullName, email, passwordHash, role]
-        )
-      );
+      const { user, requestId } = await withDbClient(async (client) => {
+        try {
+          await client.query('BEGIN');
+          await client.query("SELECT set_config('app.current_company_id', $1, true)", [
+            resolvedCompanyId,
+          ]);
 
-      const user = rows[0];
+          const { rows: existingRows } = await client.query(
+            `SELECT id, is_active
+             FROM users
+             WHERE company_id = $1 AND email = $2
+             LIMIT 1`,
+            [resolvedCompanyId, email]
+          );
 
-      response.status(201).json({
+          if (existingRows.length === 1) {
+            const existing = existingRows[0];
+
+            if (existing.is_active) {
+              throw new HttpError(
+                409,
+                'AUTH_VALIDATION_ERROR',
+                'A user with this email already exists in the company'
+              );
+            }
+
+            const { rows: pendingRows } = await client.query(
+              `SELECT id
+               FROM company_join_requests
+               WHERE company_id = $1
+                 AND status = 'pending'
+                 AND user_id = $2
+               LIMIT 1`,
+              [resolvedCompanyId, existing.id]
+            );
+
+            if (pendingRows.length === 1) {
+              await client.query('COMMIT');
+              return { user: existing, requestId: pendingRows[0].id };
+            }
+
+            const { rows: insertedRequestRows } = await client.query(
+              `INSERT INTO company_join_requests (company_id, user_id, full_name, email)
+               VALUES ($1, $2, $3, $4)
+               RETURNING id`,
+              [resolvedCompanyId, existing.id, fullName, email]
+            );
+
+            await client.query('COMMIT');
+            return { user: existing, requestId: insertedRequestRows[0].id };
+          }
+
+          const { rows: insertedUserRows } = await client.query(
+            `INSERT INTO users (company_id, full_name, email, password_hash, role, is_active)
+             VALUES ($1, $2, $3, $4, $5, FALSE)
+             RETURNING id, company_id, full_name, email::text AS email, role`,
+            [resolvedCompanyId, fullName, email, passwordHash, role]
+          );
+
+          const insertedUser = insertedUserRows[0];
+
+          const { rows: insertedRequestRows } = await client.query(
+            `INSERT INTO company_join_requests (company_id, user_id, full_name, email)
+             VALUES ($1, $2, $3, $4)
+             RETURNING id`,
+            [resolvedCompanyId, insertedUser.id, fullName, email]
+          );
+
+          await client.query('COMMIT');
+          return { user: insertedUser, requestId: insertedRequestRows[0].id };
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      });
+
+      response.status(202).json({
         data: {
+          status: 'pending',
+          requestId,
+          company: {
+            id: resolvedCompany.id,
+            name: resolvedCompany.name,
+            slug: resolvedCompany.slug,
+          },
           user: {
             id: user.id,
-            companyId: user.company_id,
-            fullName: user.full_name,
-            email: user.email,
-            role: user.role,
-            isActive: user.is_active,
-            createdAt: user.created_at,
+            companyId: resolvedCompany.id,
+            fullName,
+            email,
+            role: 'employee',
           },
         },
       });
 
       await logAuthEvent({
-        eventType: 'register',
+        eventType: 'register_request',
         principalId: user.id,
         scope: 'tenant',
-        companyId: user.company_id,
-        email: user.email,
+        companyId: resolvedCompanyId,
+        email,
         success: true,
         ipAddress: request.ip,
         userAgent: request.headers['user-agent'] || null,
         metadata: {
-          role: user.role,
+          role: 'employee',
+          requestId,
         },
       });
     } catch (dbError) {
@@ -508,7 +617,7 @@ router.post('/register', registerRateLimiter, async (request, response, next) =>
     }
   } catch (error) {
     await logAuthEvent({
-      eventType: 'register',
+      eventType: 'register_request',
       scope: 'tenant',
       companyId: resolvedCompanyId,
       email: normalizeEmail(request.body.email) || null,
@@ -719,6 +828,20 @@ router.post('/login', loginRateLimiter, async (request, response, next) => {
       const user = rows[0];
 
       if (!user.is_active) {
+        const pendingRequest = await findPendingJoinRequest({
+          companyId: user.company_id,
+          userId: user.id,
+          email: user.email,
+        });
+
+        if (pendingRequest) {
+          throw new HttpError(
+            403,
+            'AUTH_ACCOUNT_PENDING',
+            'Your access request is pending approval'
+          );
+        }
+
         throw new HttpError(403, 'AUTH_ACCOUNT_DISABLED', 'Account is disabled');
       }
 
@@ -953,6 +1076,20 @@ router.post('/login/google', loginRateLimiter, async (request, response, next) =
       const user = rows[0];
 
       if (!user.is_active) {
+        const pendingRequest = await findPendingJoinRequest({
+          companyId: user.company_id,
+          userId: user.id,
+          email: user.email,
+        });
+
+        if (pendingRequest) {
+          throw new HttpError(
+            403,
+            'AUTH_ACCOUNT_PENDING',
+            'Your access request is pending approval'
+          );
+        }
+
         throw new HttpError(403, 'AUTH_ACCOUNT_DISABLED', 'Account is disabled');
       }
 
@@ -1025,99 +1162,150 @@ router.post('/login/google', loginRateLimiter, async (request, response, next) =
 
 router.post('/register/google', registerRateLimiter, async (request, response, next) => {
   let resolvedCompanyId = null;
+  let resolvedCompany = null;
 
   try {
-    throw new HttpError(
-      403,
-      'AUTH_PUBLIC_SIGNUP_DISABLED',
-      'Public employee sign-up is disabled. Employees must be created by a company admin.'
-    );
-
     const googleIdentity = await verifyGoogleIdToken(request.body.idToken);
     const email = googleIdentity.email;
-    const requestedCompanyId = normalizeValue(request.body.companyId);
-    resolvedCompanyId = await resolveTenantCompanyIdForRegister(requestedCompanyId);
+    const companyName = normalizeValue(request.body.companyName);
 
-    let user = await findTenantUserByEmailInCompany(resolvedCompanyId, email);
-
-    if (user && !user.is_active) {
-      throw new HttpError(403, 'AUTH_ACCOUNT_DISABLED', 'Account is disabled');
-    }
-
-    if (!user) {
-      const fullName = googleIdentity.name || email.split('@')[0] || 'Google User';
-      const randomPasswordHash = await bcrypt.hash(generateRefreshToken(), 12);
-
-      const { rows } = await runWithCompanyScope(resolvedCompanyId, (client) =>
-        client.query(
-          `WITH inserted_user AS (
-             INSERT INTO users (company_id, full_name, email, password_hash, role)
-             VALUES ($1, $2, $3, $4, 'employee')
-             RETURNING id, company_id, full_name, email::text AS email, role, is_active
-           )
-           SELECT
-             iu.id,
-             iu.company_id,
-             c.slug AS company_slug,
-             iu.full_name,
-             iu.email,
-             iu.role,
-             iu.is_active
-           FROM inserted_user iu
-           JOIN companies c ON c.id = iu.company_id`,
-          [resolvedCompanyId, fullName, email, randomPasswordHash]
-        )
+    if (!companyName) {
+      throw new HttpError(
+        400,
+        'AUTH_VALIDATION_ERROR',
+        'companyName is required'
       );
-
-      user = rows[0];
     }
 
-    const tokens = await issueSessionTokens({
-      principalId: user.id,
-      scope: 'tenant',
-      role: user.role,
-      companyId: user.company_id,
-      email: user.email,
-      ipAddress: request.ip,
-      userAgent: request.headers['user-agent'] || null,
+    resolvedCompany = await findCompanyByName(companyName);
+
+    if (!resolvedCompany) {
+      throw new HttpError(
+        404,
+        'AUTH_COMPANY_NOT_FOUND',
+        'Company not found'
+      );
+    }
+
+    resolvedCompanyId = resolvedCompany.id;
+
+    const fullName = googleIdentity.name || email.split('@')[0] || 'Google User';
+
+    const { user, requestId } = await withDbClient(async (client) => {
+      try {
+        await client.query('BEGIN');
+        await client.query("SELECT set_config('app.current_company_id', $1, true)", [
+          resolvedCompanyId,
+        ]);
+
+        const { rows: existingRows } = await client.query(
+          `SELECT id, is_active
+           FROM users
+           WHERE company_id = $1 AND email = $2
+           LIMIT 1`,
+          [resolvedCompanyId, email]
+        );
+
+        if (existingRows.length === 1) {
+          const existing = existingRows[0];
+
+          if (existing.is_active) {
+            throw new HttpError(
+              409,
+              'AUTH_VALIDATION_ERROR',
+              'A user with this email already exists in the company'
+            );
+          }
+
+          const { rows: pendingRows } = await client.query(
+            `SELECT id
+             FROM company_join_requests
+             WHERE company_id = $1
+               AND status = 'pending'
+               AND user_id = $2
+             LIMIT 1`,
+            [resolvedCompanyId, existing.id]
+          );
+
+          if (pendingRows.length === 1) {
+            await client.query('COMMIT');
+            return { user: existing, requestId: pendingRows[0].id };
+          }
+
+          const { rows: insertedRequestRows } = await client.query(
+            `INSERT INTO company_join_requests (company_id, user_id, full_name, email)
+             VALUES ($1, $2, $3, $4)
+             RETURNING id`,
+            [resolvedCompanyId, existing.id, fullName, email]
+          );
+
+          await client.query('COMMIT');
+          return { user: existing, requestId: insertedRequestRows[0].id };
+        }
+
+        const randomPasswordHash = await bcrypt.hash(generateRefreshToken(), 12);
+
+        const { rows: insertedUserRows } = await client.query(
+          `INSERT INTO users (company_id, full_name, email, password_hash, role, is_active)
+           VALUES ($1, $2, $3, $4, 'employee', FALSE)
+           RETURNING id, company_id, full_name, email::text AS email, role`,
+          [resolvedCompanyId, fullName, email, randomPasswordHash]
+        );
+
+        const insertedUser = insertedUserRows[0];
+
+        const { rows: insertedRequestRows } = await client.query(
+          `INSERT INTO company_join_requests (company_id, user_id, full_name, email)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id`,
+          [resolvedCompanyId, insertedUser.id, fullName, email]
+        );
+
+        await client.query('COMMIT');
+        return { user: insertedUser, requestId: insertedRequestRows[0].id };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      }
     });
 
-    response.status(201).json({
+    response.status(202).json({
       data: {
-        accessToken: tokens.accessToken,
-        tokenType: 'Bearer',
-        expiresIn: env.jwtAccessTtlSeconds,
-        refreshToken: tokens.refreshToken,
-        refreshExpiresIn: env.jwtRefreshTtlSeconds,
+        status: 'pending',
+        requestId,
+        company: {
+          id: resolvedCompany.id,
+          name: resolvedCompany.name,
+          slug: resolvedCompany.slug,
+        },
         user: {
           id: user.id,
-          companyId: user.company_id,
-          companySlug: user.company_slug,
-          fullName: user.full_name,
-          email: user.email,
-          role: user.role,
-          scope: 'tenant',
+          companyId: resolvedCompany.id,
+          fullName,
+          email,
+          role: 'employee',
         },
       },
     });
 
     await logAuthEvent({
-      eventType: 'register_google',
+      eventType: 'register_request',
       principalId: user.id,
       scope: 'tenant',
-      companyId: user.company_id,
-      email: user.email,
+      companyId: resolvedCompanyId,
+      email,
       success: true,
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       metadata: {
         provider: 'google',
         googleSubject: googleIdentity.subject || null,
+        requestId,
       },
     });
   } catch (error) {
     await logAuthEvent({
-      eventType: 'register_google',
+      eventType: 'register_request',
       scope: 'tenant',
       companyId: resolvedCompanyId,
       email: null,
