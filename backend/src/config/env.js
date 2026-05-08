@@ -21,6 +21,28 @@ function parseInteger(name, fallback, min = 1) {
   return value;
 }
 
+function parseBoolean(name, fallback = false) {
+  const raw = process.env[name];
+
+  if (raw === undefined || raw === '') {
+    return fallback;
+  }
+
+  const normalized = String(raw).trim().toLowerCase();
+
+  if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) {
+    return true;
+  }
+
+  if (['false', '0', 'no', 'n', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  throw new Error(
+    `Invalid ${name}: expected a boolean, got "${raw}"`
+  );
+}
+
 function readRequired(name) {
   const value = process.env[name];
 
@@ -81,6 +103,7 @@ export function validateEnvironment() {
   parseInteger('AUTH_RATE_LIMIT_REGISTER_MAX', 5, 1);
   parseInteger('AUTH_RATE_LIMIT_REFRESH_WINDOW_MS', 60000, 1000);
   parseInteger('AUTH_RATE_LIMIT_REFRESH_MAX', 20, 1);
+  parseBoolean('AUTO_APPROVE_SIGNUP', false);
 
   const paypalClientId = String(process.env.PAYPAL_CLIENT_ID || '').trim();
   const paypalClientSecret = String(process.env.PAYPAL_CLIENT_SECRET || '').trim();
@@ -143,6 +166,7 @@ export const env = {
     1000
   ),
   authRateLimitRefreshMax: parseInteger('AUTH_RATE_LIMIT_REFRESH_MAX', 20, 1),
+  autoApproveSignup: parseBoolean('AUTO_APPROVE_SIGNUP', false),
   paypalEnvironment,
   paypalClientId,
   paypalClientSecret,

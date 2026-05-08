@@ -1,22 +1,14 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Header from '../components/Header';
 import PageBackground from '../components/PageBackground';
 import { useLanguage } from '../lib/i18n';
 import { registerGoogleRequest, registerRequest } from '../services/authApi';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../components/ui/dialog';
 
 export default function CreateAccountPage() {
   const { t } = useLanguage();
+  const navigate = useNavigate();
   const [form, setForm] = useState({
-    companyName: '',
     fullName: '',
     email: '',
     password: '',
@@ -27,21 +19,43 @@ export default function CreateAccountPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [isGoogleReady, setIsGoogleReady] = useState(false);
-  const [isCompanyDialogOpen, setIsCompanyDialogOpen] = useState(false);
-  const [pendingGoogleToken, setPendingGoogleToken] = useState('');
-  const [companyDialogValue, setCompanyDialogValue] = useState('');
-  const [dialogError, setDialogError] = useState('');
   const googleButtonRef = useRef(null);
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const redirectTimeoutRef = useRef(null);
+
+  const scheduleRedirect = useCallback(() => {
+    if (redirectTimeoutRef.current) {
+      clearTimeout(redirectTimeoutRef.current);
+    }
+
+    redirectTimeoutRef.current = setTimeout(() => {
+      navigate('/');
+    }, 1200);
+  }, [navigate]);
+
+  const resolveFriendlyAuthError = useCallback((error, fallbackMessage) => {
+    const rawMessage = String(error?.message || '').trim();
+
+    if (!rawMessage) {
+      return fallbackMessage;
+    }
+
+    const normalized = rawMessage.toLowerCase();
+    const isNetworkError =
+      normalized.includes('failed to fetch') ||
+      normalized.includes('networkerror') ||
+      normalized.includes('network request failed') ||
+      normalized.includes('load failed');
+
+    if (isNetworkError) {
+      return t('auth.createAccount.networkIssue');
+    }
+
+    return rawMessage;
+  }, [t]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-
-    if (!form.companyName.trim()) {
-      setMessage(t('auth.createAccount.companyRequired'));
-      setMessageType('error');
-      return;
-    }
 
     if (form.password !== form.confirmPassword) {
       setMessage(t('auth.createAccount.passwordMismatch'));
@@ -55,7 +69,6 @@ export default function CreateAccountPage() {
 
     try {
       await registerRequest({
-        companyName: form.companyName.trim(),
         fullName: form.fullName.trim(),
         email: form.email.trim().toLowerCase(),
         password: form.password,
@@ -64,8 +77,9 @@ export default function CreateAccountPage() {
 
       setMessage(t('auth.createAccount.pendingRequest'));
       setMessageType('success');
+      scheduleRedirect();
     } catch (error) {
-      setMessage(error.message || t('auth.createAccount.emailExists'));
+      setMessage(resolveFriendlyAuthError(error, t('auth.createAccount.emailExists')));
       setMessageType('error');
     } finally {
       setIsSubmitting(false);
@@ -75,56 +89,40 @@ export default function CreateAccountPage() {
   const handleGoogleCredential = useCallback(
     async (googleResponse) => {
       if (!googleResponse?.credential) {
-        setMessage('Google sign-up failed. Missing credential.');
+        setMessage(t('auth.createAccount.googleCredentialMissing'));
         setMessageType('error');
         return;
       }
 
-      setPendingGoogleToken(googleResponse.credential);
-      setCompanyDialogValue(form.companyName);
-      setDialogError('');
-      setIsCompanyDialogOpen(true);
+      setIsGoogleSubmitting(true);
+      setMessage('');
+      setMessageType('');
+
+      try {
+        await registerGoogleRequest({
+          idToken: googleResponse.credential,
+        });
+
+        setMessage(t('auth.createAccount.pendingRequest'));
+        setMessageType('success');
+        scheduleRedirect();
+      } catch (error) {
+        setMessage(resolveFriendlyAuthError(error, t('auth.createAccount.googleSignupFailed')));
+        setMessageType('error');
+      } finally {
+        setIsGoogleSubmitting(false);
+      }
     },
-    [form.companyName]
+    [resolveFriendlyAuthError, t]
   );
 
-  const handleGoogleCompanySubmit = async (event) => {
-    event.preventDefault();
-
-    if (!companyDialogValue.trim()) {
-      setDialogError(t('auth.createAccount.companyRequired'));
-      return;
-    }
-
-    if (!pendingGoogleToken) {
-      setDialogError('Google sign-up failed. Missing credential.');
-      return;
-    }
-
-    setIsGoogleSubmitting(true);
-    setDialogError('');
-
-    try {
-      await registerGoogleRequest({
-        idToken: pendingGoogleToken,
-        companyName: companyDialogValue.trim(),
-      });
-
-      setIsCompanyDialogOpen(false);
-      setPendingGoogleToken('');
-      setMessage(t('auth.createAccount.pendingRequest'));
-      setMessageType('success');
-    } catch (error) {
-      const rawMessage = String(error?.message || '').toLowerCase();
-      if (rawMessage.includes('company not found')) {
-        setDialogError(t('auth.createAccount.companyNotFound'));
-      } else {
-        setDialogError(error.message || 'Google sign-up failed');
+  useEffect(() => {
+    return () => {
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
       }
-    } finally {
-      setIsGoogleSubmitting(false);
-    }
-  };
+    };
+  }, []);
 
   useEffect(() => {
     if (!googleClientId || !googleButtonRef.current) {
@@ -183,7 +181,7 @@ export default function CreateAccountPage() {
         return;
       }
 
-      setMessage('Google sign-in script failed to load.');
+      setMessage(t('auth.createAccount.googleScriptFailed'));
       setMessageType('error');
     };
 
@@ -205,19 +203,6 @@ export default function CreateAccountPage() {
           <p>{t('auth.createAccount.subtitle')}</p>
 
           <form className="auth-form" onSubmit={handleSubmit}>
-            <label>
-              {t('auth.createAccount.companyName')}
-              <input
-                type="text"
-                value={form.companyName}
-                onChange={(event) => setForm((current) => ({
-                  ...current,
-                  companyName: event.target.value,
-                }))}
-                required
-              />
-            </label>
-
             <label>
               {t('auth.createAccount.fullName')}
               <input
@@ -300,58 +285,6 @@ export default function CreateAccountPage() {
           </div>
         </section>
       </main>
-
-      <Dialog
-        open={isCompanyDialogOpen}
-        onOpenChange={(open) => {
-          setIsCompanyDialogOpen(open);
-          if (!open) {
-            setDialogError('');
-            setPendingGoogleToken('');
-          }
-        }}
-      >
-        <DialogContent className="dialog-content company-dialog">
-          <DialogHeader>
-            <DialogTitle className="company-dialog-title">{t('auth.createAccount.googleCompanyTitle')}</DialogTitle>
-            <DialogDescription className="company-dialog-description">
-              {t('auth.createAccount.googleCompanyDescription')}
-            </DialogDescription>
-          </DialogHeader>
-          <form className="dialog-form" onSubmit={handleGoogleCompanySubmit}>
-            <label className="dialog-field">
-              {t('auth.createAccount.companyName')}
-              <input
-                type="text"
-                value={companyDialogValue}
-                onChange={(event) => setCompanyDialogValue(event.target.value)}
-                placeholder="Acme Logistics"
-                required
-              />
-            </label>
-
-            {dialogError ? (
-              <p className="form-message error" aria-live="polite">{dialogError}</p>
-            ) : null}
-
-            <DialogFooter>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => {
-                  setIsCompanyDialogOpen(false);
-                  setPendingGoogleToken('');
-                }}
-              >
-                {t('auth.createAccount.googleCompanyCancel')}
-              </button>
-              <button type="submit" className="btn btn-primary" disabled={isGoogleSubmitting}>
-                {t('auth.createAccount.googleCompanySubmit')}
-              </button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import PageBackground from '../components/PageBackground';
 import { getBillingPlans } from '../services/platformApi';
+import { getSession } from '../lib/authStore';
 
 const CHECKOUT_STORAGE_KEY = 'company-admin-checkout';
 const SPECIAL_CHAR_REGEX = /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/;
