@@ -4,6 +4,8 @@ import {
   getSession,
   clearSession,
   getSessionChangeEventName,
+  getDashboardPathForRole,
+  getRoleFromSession,
   getWorkspaceMenuForSession,
 } from '../lib/authStore';
 import { logoutRequest } from '../services/authApi';
@@ -349,6 +351,8 @@ export default function Header({ showNav = true, isDashboard = false }) {
   };
 
   const isLoggedIn = Boolean(session?.accessToken && session?.user?.email);
+  const roleForDashboard = getRoleFromSession(session);
+  const dashboardPath = getDashboardPathForRole(roleForDashboard);
   const showLandingNavigation = showNav && !isDashboard && !isLoggedIn;
   const showWorkspaceNavigation = isLoggedIn && (isDashboard || showNav);
   const hasNavigation = showLandingNavigation || showWorkspaceNavigation;
@@ -363,11 +367,12 @@ export default function Header({ showNav = true, isDashboard = false }) {
     ar: arabicFlag,
   };
   const activeFlag = languageFlags[language];
+  const logoTarget = isLoggedIn ? dashboardPath : '/';
 
   const handleLogoClick = (event) => {
     closeMenus();
 
-    if (location.pathname === '/') {
+    if (location.pathname === logoTarget) {
       event.preventDefault();
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -380,7 +385,7 @@ export default function Header({ showNav = true, isDashboard = false }) {
 
   return (
     <header className={`site-header${hasNavigation && isMobileMenuOpen ? ' is-mobile-open' : ''}${isCompactHeader ? ' is-compact' : ''}`} ref={headerRef}>
-      <Link to="/" className="brand" onClick={handleLogoClick}>
+      <Link to={logoTarget} className="brand" onClick={handleLogoClick}>
         <img src={logoSrc} alt="StockPro" className="site-logo" />
       </Link>
 
@@ -545,8 +550,6 @@ export default function Header({ showNav = true, isDashboard = false }) {
         )}
 
         <div className="header-actions">
-          {isLoggedIn && <span className="auth-status-pill">You are logged</span>}
-
           <div className="language-picker" ref={languageMenuRef}>
             <button
               type="button"

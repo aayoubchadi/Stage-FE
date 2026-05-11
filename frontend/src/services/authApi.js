@@ -94,9 +94,9 @@ async function fetchAuthEndpoint(path, options) {
   throw lastError || new Error('Unable to reach authentication service');
 }
 
-export async function loginRequest({ email, password, accountScope, companyId }) {
+export async function loginRequest({ username, password, accountScope, companyId }) {
   const body = {
-    email,
+    username,
     password,
   };
 
@@ -151,9 +151,10 @@ export async function googleLoginRequest({ idToken, accountScope, companyId }) {
   return payload?.data;
 }
 
-export async function registerRequest({ companyName, fullName, email, password, role }) {
+export async function registerRequest({ companyName, fullName, username, email, password, role }) {
   const body = {
     fullName,
+    username,
     email,
     password,
   };

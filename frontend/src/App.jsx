@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import CreateAccountPage from './pages/CreateAccountPage';
+import SignupPricingPage from './pages/SignupPricingPage';
 import CompanyAdminCheckoutPage from './pages/CompanyAdminCheckoutPage';
 import CompanyAdminInfoPage from './pages/CompanyAdminInfoPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -38,6 +39,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/create-account" element={<CreateAccountPage />} />
+          <Route path="/signup-pricing" element={<SignupPricingPage />} />
           <Route path="/company-admin-checkout" element={<CompanyAdminInfoPage />} />
           <Route path="/company-admin-payment" element={<CompanyAdminCheckoutPage />} />
           <Route path="/demo-onboarding" element={<DemoOnboardingPage />} />

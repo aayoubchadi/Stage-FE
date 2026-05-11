@@ -30,6 +30,7 @@ export default function DemoOnboardingPage() {
   const [form, setForm] = useState({
     companyName: '',
     companySlug: '',
+    adminUsername: '',
     adminFullName: '',
     adminEmail: '',
     adminPassword: '',
@@ -40,6 +41,7 @@ export default function DemoOnboardingPage() {
     () =>
       Boolean(
         form.companyName.trim() &&
+        form.adminUsername.trim() &&
         form.adminFullName.trim() &&
         form.adminEmail.trim() &&
         form.adminPassword
@@ -156,6 +158,7 @@ export default function DemoOnboardingPage() {
             orderId,
             companyName: currentForm.companyName,
             companySlug: currentForm.companySlug || slugify(currentForm.companyName),
+            adminUsername: currentForm.adminUsername,
             adminFullName: currentForm.adminFullName,
             adminEmail: currentForm.adminEmail.trim().toLowerCase(),
             adminPassword: currentForm.adminPassword,
@@ -257,6 +260,17 @@ export default function DemoOnboardingPage() {
                     value={form.adminFullName}
                     onChange={(event) =>
                       setForm((current) => ({ ...current, adminFullName: event.target.value }))
+                    }
+                    required
+                  />
+                </label>
+                <label>
+                  Admin username
+                  <input
+                    type="text"
+                    value={form.adminUsername}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, adminUsername: event.target.value }))
                     }
                     required
                   />

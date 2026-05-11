@@ -12,6 +12,21 @@ import { getDashboardPathForRole, saveSession } from '../lib/authStore';
 
 const SPECIAL_CHAR_REGEX = /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/;
 const CHECKOUT_STORAGE_KEY = 'company-admin-checkout';
+const CHECKOUT_STEPS = [
+  { key: 'plan', label: 'Plan' },
+  { key: 'details', label: 'Company details' },
+  { key: 'payment', label: 'Payment' },
+];
+
+function slugify(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+}
 
 function formatPrice(amountCents, currencyCode) {
   return new Intl.NumberFormat(undefined, {
@@ -77,6 +92,10 @@ function getCheckoutValidationError({ selectedPlan, form }) {
     return 'Admin full name is required.';
   }
 
+  if (!String(form.adminUsername || '').trim()) {
+    return 'Admin username is required.';
+  }
+
   if (!String(form.adminEmail || '').trim()) {
     return 'Admin email is required.';
   }
@@ -105,6 +124,7 @@ export default function CompanyAdminCheckoutPage() {
   const formRef = useRef({
     companyName: '',
     companySlug: '',
+    adminUsername: '',
     adminFullName: '',
     adminEmail: '',
     adminPassword: '',
@@ -122,6 +142,7 @@ export default function CompanyAdminCheckoutPage() {
   const [form, setForm] = useState({
     companyName: '',
     companySlug: '',
+    adminUsername: '',
     adminFullName: '',
     adminEmail: '',
     adminPassword: '',
@@ -130,6 +151,7 @@ export default function CompanyAdminCheckoutPage() {
 
   const [selectedPlanCode, setSelectedPlanCode] = useState('');
   const paypalClientId = String(import.meta.env.VITE_PAYPAL_CLIENT_ID || '').trim();
+  const activeStepIndex = 2;
 
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.code === selectedPlanCode) || plans[0] || null,
@@ -151,10 +173,12 @@ export default function CompanyAdminCheckoutPage() {
         return;
       }
 
+      const derivedSlug = parsed.companySlug || slugify(parsed.companyName);
       setSelectedPlanCode(parsed.planCode);
       const nextForm = {
         companyName: parsed.companyName || '',
-        companySlug: parsed.companySlug || '',
+        companySlug: derivedSlug || '',
+        adminUsername: parsed.adminUsername || '',
         adminFullName: parsed.adminFullName || '',
         adminEmail: parsed.adminEmail || '',
         adminPassword: parsed.adminPassword || '',
@@ -370,6 +394,7 @@ export default function CompanyAdminCheckoutPage() {
             planCode: currentPlan.code,
             companyName: currentForm.companyName,
             companySlug: currentForm.companySlug,
+            adminUsername: currentForm.adminUsername,
             adminFullName: currentForm.adminFullName,
             adminEmail: currentForm.adminEmail,
             adminPassword: currentForm.adminPassword,
@@ -461,51 +486,26 @@ export default function CompanyAdminCheckoutPage() {
             Your payment confirms the company admin subscription and completes provisioning.
           </p>
 
-          <div className="checkout-grid">
-            <article className="checkout-panel">
+          <ol className="checkout-stepper" role="list">
+            {CHECKOUT_STEPS.map((step, index) => {
+              const isComplete = index < activeStepIndex;
+              const isActive = index === activeStepIndex;
+              return (
+                <li
+                  key={step.key}
+                  className={`checkout-step${isComplete ? ' is-complete' : ''}${isActive ? ' is-active' : ''}`}
+                  aria-current={isActive ? 'step' : undefined}
+                >
+                  <span className="checkout-step-index">{index + 1}</span>
+                  <span className="checkout-step-label">{step.label}</span>
+                </li>
+              );
+            })}
+          </ol>
+
+          <div className="checkout-grid checkout-grid-payment">
+            <article className="checkout-panel checkout-panel-payment">
               <h2>Payment</h2>
-
-              {isPlansLoading ? <p>Loading plans...</p> : null}
-              {selectedPlan ? (
-                <div className="checkout-plan-picker" role="radiogroup" aria-label="Selected plan">
-                  <div className="checkout-plan-option is-selected">
-                    <strong>{selectedPlan.name}</strong>
-                    <span>{formatPrice(selectedPlan.monthlyPriceCents, selectedPlan.currencyCode)} / month</span>
-                    <small>{selectedPlan.maxEmployees} users included</small>
-                  </div>
-                </div>
-              ) : null}
-            </article>
-
-            <aside className="checkout-panel checkout-summary-panel">
-              <h2>Payment Summary</h2>
-
-              {selectedPlan ? (
-                <>
-                  <div className="checkout-summary-row">
-                    <span>Plan</span>
-                    <strong>{selectedPlan.name}</strong>
-                  </div>
-                  <div className="checkout-summary-row">
-                    <span>Company</span>
-                    <strong>{form.companyName}</strong>
-                  </div>
-                  <div className="checkout-summary-row">
-                    <span>Monthly billing</span>
-                    <strong>{formatPrice(selectedPlan.monthlyPriceCents, selectedPlan.currencyCode)}</strong>
-                  </div>
-                  <div className="checkout-summary-row">
-                    <span>Users included</span>
-                    <strong>{selectedPlan.maxEmployees}</strong>
-                  </div>
-                  <div className="checkout-summary-row">
-                    <span>Advanced analytics</span>
-                    <strong>{selectedPlan.features?.canUseAdvancedAnalytics ? 'Included' : 'Not included'}</strong>
-                  </div>
-                </>
-              ) : (
-                <p>Select a plan to continue.</p>
-              )}
 
               {!paypalClientId ? (
                 <p className="form-message error">
@@ -513,12 +513,14 @@ export default function CompanyAdminCheckoutPage() {
                 </p>
               ) : null}
 
-              <div className="checkout-paypal-slot" ref={paypalButtonsRef} aria-busy={isCapturing} />
+              <div className="checkout-paypal-panel" aria-busy={isCapturing}>
+                <div className="checkout-paypal-slot" ref={paypalButtonsRef} />
 
-              {!isPayPalSdkReady && paypalClientId ? (
-                <small className="checkout-paypal-hint">Loading PayPal checkout...</small>
-              ) : null}
-            </aside>
+                {!isPayPalSdkReady && paypalClientId ? (
+                  <small className="checkout-paypal-hint">Loading PayPal checkout...</small>
+                ) : null}
+              </div>
+            </article>
           </div>
 
           <p className={`form-message ${messageType}`} aria-live="polite">

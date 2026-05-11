@@ -3,7 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import PageBackground from '../components/PageBackground';
 import { getBillingPlans } from '../services/platformApi';
-import { getSession } from '../lib/authStore';
+
+const CHECKOUT_STEPS = [
+    { key: 'plan', label: 'Plan' },
+    { key: 'details', label: 'Company details' },
+    { key: 'payment', label: 'Payment' },
+];
+
+const SIGNUP_PREFILL_KEY = 'company-admin-signup';
 
 const CHECKOUT_STORAGE_KEY = 'company-admin-checkout';
 const SPECIAL_CHAR_REGEX = /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/;
@@ -74,6 +81,10 @@ function getCheckoutValidationError({ selectedPlan, form }) {
         return 'Admin full name is required.';
     }
 
+    if (!String(form.adminUsername || '').trim()) {
+        return 'Admin username is required.';
+    }
+
     if (!String(form.adminEmail || '').trim()) {
         return 'Admin email is required.';
     }
@@ -102,11 +113,11 @@ export default function CompanyAdminInfoPage() {
     const [isPlansLoading, setIsPlansLoading] = useState(true);
     const [message, setMessage] = useState('');
     const [messageType, setMessageType] = useState('');
-    const [hasEditedSlug, setHasEditedSlug] = useState(false);
+    const [activeStep, setActiveStep] = useState(1);
     const [form, setForm] = useState({
         companyName: '',
-        companySlug: '',
         adminFullName: '',
+        adminUsername: '',
         adminEmail: '',
         adminPassword: '',
         adminPasswordConfirm: '',
@@ -119,6 +130,8 @@ export default function CompanyAdminInfoPage() {
         () => plans.find((plan) => plan.code === selectedPlanCode) || plans[0] || null,
         [plans, selectedPlanCode]
     );
+
+    const activeStepIndex = activeStep - 1;
 
     useEffect(() => {
         let isActive = true;
@@ -162,15 +175,56 @@ export default function CompanyAdminInfoPage() {
     }, [selectedPlanCodeFromUrl]);
 
     useEffect(() => {
-        if (hasEditedSlug) {
+        const stored = sessionStorage.getItem(SIGNUP_PREFILL_KEY);
+        if (!stored) {
             return;
         }
 
-        setForm((current) => ({
-            ...current,
-            companySlug: slugify(current.companyName),
-        }));
-    }, [form.companyName, hasEditedSlug]);
+        try {
+            const parsed = JSON.parse(stored);
+            const nextFullName = String(parsed?.fullName || '');
+            const nextUsername = String(parsed?.username || '');
+            const nextEmail = String(parsed?.email || '');
+            const nextPassword = String(parsed?.password || '');
+
+            setForm((current) => ({
+                ...current,
+                adminFullName: current.adminFullName || nextFullName,
+                adminUsername: current.adminUsername || nextUsername,
+                adminEmail: current.adminEmail || nextEmail,
+                adminPassword: current.adminPassword || nextPassword,
+                adminPasswordConfirm: current.adminPasswordConfirm || nextPassword,
+            }));
+
+            if (selectedPlanCodeFromUrl && (nextEmail || nextFullName)) {
+                setActiveStep(2);
+            }
+        } catch {
+            return;
+        }
+    }, [selectedPlanCodeFromUrl]);
+
+    const handleNextStep = () => {
+        if (isPlansLoading) {
+            return;
+        }
+
+        if (!selectedPlan) {
+            setMessage('Please select a subscription plan.');
+            setMessageType('error');
+            return;
+        }
+
+        setMessage('');
+        setMessageType('');
+        setActiveStep(2);
+    };
+
+    const handleBackStep = () => {
+        setMessage('');
+        setMessageType('');
+        setActiveStep(1);
+    };
 
     const handleSubmit = (event) => {
         event.preventDefault();
@@ -186,10 +240,19 @@ export default function CompanyAdminInfoPage() {
             return;
         }
 
+        const companySlug = slugify(form.companyName);
+
+        if (!companySlug) {
+            setMessage('Company name must include letters or numbers.');
+            setMessageType('error');
+            return;
+        }
+
         const payload = {
             planCode: selectedPlan.code,
             companyName: form.companyName.trim(),
-            companySlug: form.companySlug.trim(),
+            companySlug,
+            adminUsername: form.adminUsername.trim().toLowerCase(),
             adminFullName: form.adminFullName.trim(),
             adminEmail: form.adminEmail.trim().toLowerCase(),
             adminPassword: form.adminPassword,
@@ -211,130 +274,178 @@ export default function CompanyAdminInfoPage() {
                         Enter your company details first. Payment will be handled on the next step.
                     </p>
 
+                    <ol className="checkout-stepper" role="list">
+                        {CHECKOUT_STEPS.map((step, index) => {
+                            const isComplete = index < activeStepIndex;
+                            const isActive = index === activeStepIndex;
+                            return (
+                                <li
+                                    key={step.key}
+                                    className={`checkout-step${isComplete ? ' is-complete' : ''}${isActive ? ' is-active' : ''}`}
+                                    aria-current={isActive ? 'step' : undefined}
+                                >
+                                    <span className="checkout-step-index">{index + 1}</span>
+                                    <span className="checkout-step-label">{step.label}</span>
+                                </li>
+                            );
+                        })}
+                    </ol>
+
                     <div className="checkout-grid">
                         <article className="checkout-panel">
-                            <h2>Company Setup</h2>
+                            {activeStep === 1 ? (
+                                <>
+                                    <div className="checkout-step-header">
+                                        <span className="checkout-step-kicker">Step 1</span>
+                                        <h2>Choose your plan</h2>
+                                        <p>Select the subscription that matches your team size.</p>
+                                    </div>
 
-                            {isPlansLoading ? (
-                                <p>Loading plans...</p>
+                                    {isPlansLoading ? (
+                                        <p>Loading plans...</p>
+                                    ) : (
+                                        <div className="checkout-plan-picker" role="radiogroup" aria-label="Select plan">
+                                            {plans.map((plan) => {
+                                                const isSelected = selectedPlan?.code === plan.code;
+
+                                                return (
+                                                    <button
+                                                        key={plan.code}
+                                                        type="button"
+                                                        className={`checkout-plan-option${isSelected ? ' is-selected' : ''}`}
+                                                        aria-pressed={isSelected}
+                                                        onClick={() => setSelectedPlanCode(plan.code)}
+                                                    >
+                                                        <strong>{plan.name}</strong>
+                                                        <span>{(plan.monthlyPriceCents / 100).toFixed(0)} {plan.currencyCode} / month</span>
+                                                        <small>{plan.maxEmployees} users included</small>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    <div className="checkout-step-actions">
+                                        <button
+                                            type="button"
+                                            className="btn btn-primary"
+                                            onClick={handleNextStep}
+                                            disabled={isPlansLoading || !selectedPlan}
+                                        >
+                                            Continue
+                                        </button>
+                                    </div>
+                                </>
                             ) : (
-                                <div className="checkout-plan-picker" role="radiogroup" aria-label="Select plan">
-                                    {plans.map((plan) => {
-                                        const isSelected = selectedPlan?.code === plan.code;
+                                <>
+                                    <div className="checkout-step-header">
+                                        <span className="checkout-step-kicker">Step 2</span>
+                                        <h2>Company details</h2>
+                                        <p>Tell us about your company and the admin account.</p>
+                                    </div>
 
-                                        return (
-                                            <button
-                                                key={plan.code}
-                                                type="button"
-                                                className={`checkout-plan-option${isSelected ? ' is-selected' : ''}`}
-                                                aria-pressed={isSelected}
-                                                onClick={() => setSelectedPlanCode(plan.code)}
-                                            >
-                                                <strong>{plan.name}</strong>
-                                                <span>{(plan.monthlyPriceCents / 100).toFixed(0)} {plan.currencyCode} / month</span>
-                                                <small>{plan.maxEmployees} users included</small>
+                                    <form className="checkout-form" onSubmit={handleSubmit}>
+                                        <label>
+                                            Company name
+                                            <input
+                                                type="text"
+                                                value={form.companyName}
+                                                onChange={(event) =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        companyName: event.target.value,
+                                                    }))
+                                                }
+                                                required
+                                            />
+                                        </label>
+
+                                        <label>
+                                            Admin full name
+                                            <input
+                                                type="text"
+                                                value={form.adminFullName}
+                                                onChange={(event) =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        adminFullName: event.target.value,
+                                                    }))
+                                                }
+                                                required
+                                            />
+                                        </label>
+
+                                        <label>
+                                            Admin username
+                                            <input
+                                                type="text"
+                                                value={form.adminUsername}
+                                                onChange={(event) =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        adminUsername: event.target.value,
+                                                    }))
+                                                }
+                                                required
+                                            />
+                                        </label>
+
+                                        <label>
+                                            Admin email
+                                            <input
+                                                type="email"
+                                                value={form.adminEmail}
+                                                onChange={(event) =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        adminEmail: event.target.value,
+                                                    }))
+                                                }
+                                                required
+                                            />
+                                        </label>
+
+                                        <label>
+                                            Admin password
+                                            <input
+                                                type="password"
+                                                value={form.adminPassword}
+                                                onChange={(event) =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        adminPassword: event.target.value,
+                                                    }))
+                                                }
+                                                required
+                                            />
+                                        </label>
+
+                                        <label>
+                                            Confirm password
+                                            <input
+                                                type="password"
+                                                value={form.adminPasswordConfirm}
+                                                onChange={(event) =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        adminPasswordConfirm: event.target.value,
+                                                    }))
+                                                }
+                                                required
+                                            />
+                                        </label>
+
+                                        <div className="checkout-step-actions is-split">
+                                            <button type="button" className="btn btn-ghost" onClick={handleBackStep}>
+                                                Back
                                             </button>
-                                        );
-                                    })}
-                                </div>
+                                            <button type="submit" className="btn btn-primary">
+                                                Continue to payment
+                                            </button>
+                                        </div>
+                                    </form>
+                                </>
                             )}
-
-                            <form className="checkout-form" onSubmit={handleSubmit}>
-                                <label>
-                                    Company name
-                                    <input
-                                        type="text"
-                                        value={form.companyName}
-                                        onChange={(event) =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                companyName: event.target.value,
-                                            }))
-                                        }
-                                        required
-                                    />
-                                </label>
-
-                                <label>
-                                    Company slug
-                                    <input
-                                        type="text"
-                                        value={form.companySlug}
-                                        onChange={(event) => {
-                                            setHasEditedSlug(true);
-                                            setForm((current) => ({
-                                                ...current,
-                                                companySlug: event.target.value,
-                                            }));
-                                        }}
-                                        required
-                                    />
-                                </label>
-
-                                <label>
-                                    Admin full name
-                                    <input
-                                        type="text"
-                                        value={form.adminFullName}
-                                        onChange={(event) =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                adminFullName: event.target.value,
-                                            }))
-                                        }
-                                        required
-                                    />
-                                </label>
-
-                                <label>
-                                    Admin email
-                                    <input
-                                        type="email"
-                                        value={form.adminEmail}
-                                        onChange={(event) =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                adminEmail: event.target.value,
-                                            }))
-                                        }
-                                        required
-                                    />
-                                </label>
-
-                                <label>
-                                    Admin password
-                                    <input
-                                        type="password"
-                                        value={form.adminPassword}
-                                        onChange={(event) =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                adminPassword: event.target.value,
-                                            }))
-                                        }
-                                        required
-                                    />
-                                </label>
-
-                                <label>
-                                    Confirm password
-                                    <input
-                                        type="password"
-                                        value={form.adminPasswordConfirm}
-                                        onChange={(event) =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                adminPasswordConfirm: event.target.value,
-                                            }))
-                                        }
-                                        required
-                                    />
-                                </label>
-
-                                <button type="submit" className="btn btn-primary">
-                                    Continue to payment
-                                </button>
-                            </form>
                         </article>
 
                         <aside className="checkout-panel checkout-summary-panel">

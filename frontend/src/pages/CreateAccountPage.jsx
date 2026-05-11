@@ -1,15 +1,17 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import Header from '../components/Header';
 import PageBackground from '../components/PageBackground';
 import { useLanguage } from '../lib/i18n';
-import { registerGoogleRequest, registerRequest } from '../services/authApi';
+
+const SIGNUP_PREFILL_KEY = 'company-admin-signup';
 
 export default function CreateAccountPage() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [form, setForm] = useState({
     fullName: '',
+    username: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -17,42 +19,6 @@ export default function CreateAccountPage() {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
-  const [isGoogleReady, setIsGoogleReady] = useState(false);
-  const googleButtonRef = useRef(null);
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  const redirectTimeoutRef = useRef(null);
-
-  const scheduleRedirect = useCallback(() => {
-    if (redirectTimeoutRef.current) {
-      clearTimeout(redirectTimeoutRef.current);
-    }
-
-    redirectTimeoutRef.current = setTimeout(() => {
-      navigate('/');
-    }, 1200);
-  }, [navigate]);
-
-  const resolveFriendlyAuthError = useCallback((error, fallbackMessage) => {
-    const rawMessage = String(error?.message || '').trim();
-
-    if (!rawMessage) {
-      return fallbackMessage;
-    }
-
-    const normalized = rawMessage.toLowerCase();
-    const isNetworkError =
-      normalized.includes('failed to fetch') ||
-      normalized.includes('networkerror') ||
-      normalized.includes('network request failed') ||
-      normalized.includes('load failed');
-
-    if (isNetworkError) {
-      return t('auth.createAccount.networkIssue');
-    }
-
-    return rawMessage;
-  }, [t]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -67,130 +33,17 @@ export default function CreateAccountPage() {
     setMessage('');
     setMessageType('');
 
-    try {
-      await registerRequest({
-        fullName: form.fullName.trim(),
-        email: form.email.trim().toLowerCase(),
-        password: form.password,
-        role: 'employee',
-      });
+    const payload = {
+      fullName: form.fullName.trim(),
+      username: form.username.trim().toLowerCase(),
+      email: form.email.trim().toLowerCase(),
+      password: form.password,
+    };
 
-      setMessage(t('auth.createAccount.pendingRequest'));
-      setMessageType('success');
-      scheduleRedirect();
-    } catch (error) {
-      setMessage(resolveFriendlyAuthError(error, t('auth.createAccount.emailExists')));
-      setMessageType('error');
-    } finally {
-      setIsSubmitting(false);
-    }
+    sessionStorage.setItem(SIGNUP_PREFILL_KEY, JSON.stringify(payload));
+    setIsSubmitting(false);
+    navigate('/signup-pricing');
   };
-
-  const handleGoogleCredential = useCallback(
-    async (googleResponse) => {
-      if (!googleResponse?.credential) {
-        setMessage(t('auth.createAccount.googleCredentialMissing'));
-        setMessageType('error');
-        return;
-      }
-
-      setIsGoogleSubmitting(true);
-      setMessage('');
-      setMessageType('');
-
-      try {
-        await registerGoogleRequest({
-          idToken: googleResponse.credential,
-        });
-
-        setMessage(t('auth.createAccount.pendingRequest'));
-        setMessageType('success');
-        scheduleRedirect();
-      } catch (error) {
-        setMessage(resolveFriendlyAuthError(error, t('auth.createAccount.googleSignupFailed')));
-        setMessageType('error');
-      } finally {
-        setIsGoogleSubmitting(false);
-      }
-    },
-    [resolveFriendlyAuthError, t]
-  );
-
-  useEffect(() => {
-    return () => {
-      if (redirectTimeoutRef.current) {
-        clearTimeout(redirectTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!googleClientId || !googleButtonRef.current) {
-      return undefined;
-    }
-
-    let isActive = true;
-
-    const initializeGoogle = () => {
-      if (!window.google?.accounts?.id || !googleButtonRef.current || !isActive) {
-        return;
-      }
-
-      window.google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: handleGoogleCredential,
-      });
-
-      googleButtonRef.current.innerHTML = '';
-      window.google.accounts.id.renderButton(googleButtonRef.current, {
-        type: 'standard',
-        theme: 'outline',
-        text: 'signup_with',
-        shape: 'pill',
-        size: 'large',
-        width: Math.max(220, Math.round(googleButtonRef.current.clientWidth || 320)),
-      });
-
-      setIsGoogleReady(true);
-    };
-
-    if (window.google?.accounts?.id) {
-      initializeGoogle();
-      return () => {
-        isActive = false;
-      };
-    }
-
-    const existingScript = document.getElementById('google-identity-services');
-
-    if (existingScript) {
-      existingScript.addEventListener('load', initializeGoogle, { once: true });
-      return () => {
-        isActive = false;
-      };
-    }
-
-    const script = document.createElement('script');
-    script.id = 'google-identity-services';
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = initializeGoogle;
-    script.onerror = () => {
-      if (!isActive) {
-        return;
-      }
-
-      setMessage(t('auth.createAccount.googleScriptFailed'));
-      setMessageType('error');
-    };
-
-    document.head.appendChild(script);
-
-    return () => {
-      isActive = false;
-    };
-  }, [googleClientId, handleGoogleCredential]);
 
   return (
     <>
@@ -211,6 +64,19 @@ export default function CreateAccountPage() {
                 onChange={(event) => setForm((current) => ({
                   ...current,
                   fullName: event.target.value,
+                }))}
+                required
+              />
+            </label>
+
+            <label>
+              {t('auth.createAccount.username')}
+              <input
+                type="text"
+                value={form.username}
+                onChange={(event) => setForm((current) => ({
+                  ...current,
+                  username: event.target.value,
                 }))}
                 required
               />
@@ -258,21 +124,6 @@ export default function CreateAccountPage() {
             <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
               {isSubmitting ? t('auth.createAccount.submitting') : t('auth.createAccount.submit')}
             </button>
-
-            <div className="auth-social-divider" aria-hidden="true">
-              <span>or</span>
-            </div>
-
-            {googleClientId ? (
-              <div className="google-login-wrap" aria-busy={isGoogleSubmitting}>
-                <div ref={googleButtonRef} className="google-login-button" />
-                {!isGoogleReady && <small>Loading Google sign-up...</small>}
-              </div>
-            ) : (
-              <small className="auth-google-missing">
-                Set VITE_GOOGLE_CLIENT_ID to enable Google sign-up.
-              </small>
-            )}
           </form>
 
           <p className={`form-message ${messageType}`} aria-live="polite">
@@ -281,7 +132,6 @@ export default function CreateAccountPage() {
 
           <div className="auth-links">
             <a href="/login">{t('auth.createAccount.hasAccount')}</a>
-            <Link to="/demo-onboarding">{t('landing.pricing.startDemoCta')}</Link>
           </div>
         </section>
       </main>
