@@ -6,7 +6,6 @@ import SignupPricingPage from './pages/SignupPricingPage';
 import CompanyAdminCheckoutPage from './pages/CompanyAdminCheckoutPage';
 import CompanyAdminInfoPage from './pages/CompanyAdminInfoPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import ResetPasswordPage from './pages/ResetPasswordPage';
 import ClientDashboardPage from './pages/ClientDashboardPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import AudienceDetailPage from './pages/AudienceDetailPage';
@@ -44,7 +43,7 @@ function App() {
           <Route path="/company-admin-payment" element={<CompanyAdminCheckoutPage />} />
           <Route path="/demo-onboarding" element={<DemoOnboardingPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/reset-password" element={<Navigate to="/forgot-password" replace />} />
           <Route path="/who-we-are" element={<WhoWeArePage />} />
           <Route path="/contact-us" element={<ContactUsPage />} />
           <Route path="/who-is-it-for/:audienceSlug" element={<AudienceDetailPage />} />

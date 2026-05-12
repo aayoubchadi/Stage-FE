@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { randomInt } from 'node:crypto';
 import { Router } from 'express';
 import { query, withDbClient } from '../lib/db.js';
 import { signAccessToken } from '../lib/authJwt.js';
@@ -29,6 +30,7 @@ import {
 import { loadTenantContext } from '../lib/tenantContext.js';
 import { buildCompanyDemoSelect } from '../lib/companyCompatibility.js';
 import { buildUserPermissionsSelect } from '../lib/userCompatibility.js';
+import { sendPasswordResetCodeEmail } from '../lib/mailer.js';
 
 const router = Router();
 
@@ -1576,8 +1578,24 @@ router.post('/refresh', refreshRateLimiter, async (request, response, next) => {
   }
 });
 
-// Basic in-memory store for reset tokens for simplicity (use Redis or DB in production)
-const resetTokensStore = new Map();
+// Basic in-memory store for reset codes for simplicity (use Redis or DB in production).
+const resetCodesStore = new Map();
+const RESET_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const RESET_CODE_TTL_MS = 1000 * 60 * 15;
+
+function generateResetCode() {
+  let code = '';
+
+  for (let index = 0; index < 6; index += 1) {
+    code += RESET_CODE_ALPHABET[randomInt(RESET_CODE_ALPHABET.length)];
+  }
+
+  return code;
+}
+
+function buildResetCodeKey(email, code) {
+  return `${normalizeEmail(email)}:${normalizeValue(code).toUpperCase()}`;
+}
 
 router.post('/forgot-password', async (request, response, next) => {
   try {
@@ -1587,26 +1605,77 @@ router.post('/forgot-password', async (request, response, next) => {
       throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Email is required');
     }
 
-    const { rows } = await query(
-      `SELECT id, email::text AS email FROM users WHERE email = $1 AND is_active = TRUE LIMIT 1`,
-      [email]
-    );
+    const { rows } = await withDbClient(async (client) => {
+      await client.query("SELECT set_config('app.current_scope', 'platform', false)");
+      return client.query(
+        `SELECT id, email::text AS email FROM users WHERE email = $1 AND is_active = TRUE LIMIT 1`,
+        [email]
+      );
+    });
 
     if (rows.length > 0) {
       const user = rows[0];
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      
-      resetTokensStore.set(resetToken, {
+      const resetCode = generateResetCode();
+      const resetCodeKey = buildResetCodeKey(user.email, resetCode);
+
+      resetCodesStore.set(resetCodeKey, {
         userId: user.id,
         email: user.email,
-        expires: Date.now() + 1000 * 60 * 15 // 15 mins
+        expires: Date.now() + RESET_CODE_TTL_MS,
       });
 
-      await sendPasswordResetEmail(user.email, resetToken);
+      try {
+        await sendPasswordResetCodeEmail(user.email, resetCode, {
+          expiresInMinutes: Math.round(RESET_CODE_TTL_MS / 60000),
+        });
+      } catch {
+        resetCodesStore.delete(resetCodeKey);
+        throw new HttpError(
+          502,
+          'PASSWORD_RESET_EMAIL_FAILED',
+          'We could not send the reset code right now. Please try again later.'
+        );
+      }
     }
 
     // Always return 200 to prevent email enumeration
-    response.json({ data: { message: 'If that email is in our database, we have sent a reset link to it.' } });
+    response.json({
+      data: {
+        message: 'If an active account exists for that email, we have sent a reset code.',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/reset-password/code/verify', async (request, response, next) => {
+  try {
+    const email = normalizeEmail(request.body.email);
+    const code = normalizeValue(request.body.code).toUpperCase();
+
+    if (!email || !code) {
+      throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Email and reset code are required');
+    }
+
+    if (!/^[A-Z0-9]{6}$/.test(code)) {
+      throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Reset code must be 6 alphanumeric characters');
+    }
+
+    const resetCodeKey = buildResetCodeKey(email, code);
+    const codeData = resetCodesStore.get(resetCodeKey);
+
+    if (!codeData || codeData.expires < Date.now()) {
+      resetCodesStore.delete(resetCodeKey);
+      throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Invalid or expired reset code');
+    }
+
+    response.json({
+      data: {
+        verified: true,
+        expiresAt: new Date(codeData.expires).toISOString(),
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -1614,25 +1683,52 @@ router.post('/forgot-password', async (request, response, next) => {
 
 router.post('/reset-password', async (request, response, next) => {
   try {
-    const { token, newPassword } = request.body;
+    const email = normalizeEmail(request.body.email);
+    const code = normalizeValue(request.body.code).toUpperCase();
+    const newPassword = normalizeValue(request.body.newPassword);
 
-    if (!token || !newPassword) {
-      throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Token and new password are required');
+    if (!email || !code || !newPassword) {
+      throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Email, reset code, and new password are required');
     }
 
-    const tokenData = resetTokensStore.get(token);
-    if (!tokenData || tokenData.expires < Date.now()) {
-      throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Invalid or expired token');
+    if (!/^[A-Z0-9]{6}$/.test(code)) {
+      throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Reset code must be 6 alphanumeric characters');
+    }
+
+    const resetCodeKey = buildResetCodeKey(email, code);
+    const codeData = resetCodesStore.get(resetCodeKey);
+
+    if (!codeData || codeData.expires < Date.now()) {
+      resetCodesStore.delete(resetCodeKey);
+      throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Invalid or expired reset code');
+    }
+
+    const passwordValidation = validatePasswordPolicy(newPassword, email);
+    if (!passwordValidation.isValid) {
+      throw new HttpError(
+        400,
+        'AUTH_VALIDATION_ERROR',
+        'Password does not meet security policy',
+        passwordValidation.errors
+      );
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 12);
 
-    await query(
-      `UPDATE users SET password_hash = $1 WHERE id = $2`,
-      [passwordHash, tokenData.userId]
-    );
+    const updateResult = await withDbClient(async (client) => {
+      await client.query("SELECT set_config('app.current_scope', 'platform', false)");
+      return client.query(
+        `UPDATE users SET password_hash = $1 WHERE id = $2 AND email = $3 AND is_active = TRUE`,
+        [passwordHash, codeData.userId, email]
+      );
+    });
 
-    resetTokensStore.delete(token);
+    if (updateResult.rowCount !== 1) {
+      resetCodesStore.delete(resetCodeKey);
+      throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Invalid or expired reset code');
+    }
+
+    resetCodesStore.delete(resetCodeKey);
 
     response.json({ data: { message: 'Password reset successful' } });
   } catch (error) {

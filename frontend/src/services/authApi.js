@@ -216,19 +216,35 @@ export async function forgotPasswordRequest(email) {
   });
 
   if (!response.ok) {
-    throw new Error(resolveErrorMessage(payload, 'Failed to send reset link'));
+    throw new Error(resolveErrorMessage(payload, 'Failed to send reset code'));
   }
 
   return payload?.data;
 }
 
-export async function resetPasswordRequest(token, newPassword) {
+export async function verifyResetCodeRequest({ email, code }) {
+  const { response, payload } = await fetchAuthEndpoint('/api/v1/auth/reset-password/code/verify', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email, code }),
+  });
+
+  if (!response.ok) {
+    throw new Error(resolveErrorMessage(payload, 'Invalid or expired reset code'));
+  }
+
+  return payload?.data;
+}
+
+export async function resetPasswordRequest({ email, code, newPassword }) {
   const { response, payload } = await fetchAuthEndpoint('/api/v1/auth/reset-password', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ token, newPassword }),
+    body: JSON.stringify({ email, code, newPassword }),
   });
 
   if (!response.ok) {

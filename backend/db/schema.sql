@@ -17,9 +17,7 @@ BEGIN
     FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'company_id'
   ) THEN
-    DROP TABLE IF EXISTS stock_movements CASCADE;
-    DROP TABLE IF EXISTS products CASCADE;
-    DROP TABLE IF EXISTS users CASCADE;
+    RAISE NOTICE 'Existing users table is missing company_id. Refusing to drop account data automatically; apply an explicit migration instead.';
   END IF;
 END
 $$;
