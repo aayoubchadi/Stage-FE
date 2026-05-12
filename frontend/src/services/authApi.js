@@ -206,6 +206,38 @@ export async function registerGoogleRequest({ idToken, companyName }) {
   return payload?.data;
 }
 
+export async function forgotPasswordRequest(email) {
+  const { response, payload } = await fetchAuthEndpoint('/api/v1/auth/forgot-password', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    throw new Error(resolveErrorMessage(payload, 'Failed to send reset link'));
+  }
+
+  return payload?.data;
+}
+
+export async function resetPasswordRequest(token, newPassword) {
+  const { response, payload } = await fetchAuthEndpoint('/api/v1/auth/reset-password', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ token, newPassword }),
+  });
+
+  if (!response.ok) {
+    throw new Error(resolveErrorMessage(payload, 'Password reset failed'));
+  }
+
+  return payload?.data;
+}
+
 export async function logoutRequest({ accessToken, refreshToken }) {
   if (!accessToken) {
     return;

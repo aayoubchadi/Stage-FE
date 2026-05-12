@@ -345,7 +345,7 @@ export default function LandingPage() {
               <img src={whiteLogo} alt="StockPro" className="lp-footer-logo lp-footer-logo-dark" />
               <p className="lp-footer-kicker">{t('landing.footer.kicker')}</p>
               <p className="lp-footer-copy">{t('landing.footer.copy')}</p>
-              <a href="/create-account" className="btn btn-primary lp-footer-cta">{t('landing.footer.primaryCta')}</a>
+              <a href="/signup-pricing" className="btn btn-primary lp-footer-cta">{t('landing.footer.primaryCta')}</a>
             </div>
 
             <div className="lp-footer-column reveal">
@@ -365,7 +365,7 @@ export default function LandingPage() {
             <div className="lp-footer-column reveal">
               <h4>{t('landing.footer.accountTitle')}</h4>
               <a href="/login">{t('landing.footer.links.login')}</a>
-              <a href="/create-account">{t('landing.footer.links.createAccount')}</a>
+              <a href="/signup-pricing">{t('landing.footer.links.createAccount')}</a>
               <a href="/forgot-password">{t('landing.footer.links.forgotPassword')}</a>
             </div>
           </div>

@@ -2,11 +2,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useEffect } from 'react';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
-import CreateAccountPage from './pages/CreateAccountPage';
 import SignupPricingPage from './pages/SignupPricingPage';
 import CompanyAdminCheckoutPage from './pages/CompanyAdminCheckoutPage';
 import CompanyAdminInfoPage from './pages/CompanyAdminInfoPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import ClientDashboardPage from './pages/ClientDashboardPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import AudienceDetailPage from './pages/AudienceDetailPage';
@@ -38,12 +38,13 @@ function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/create-account" element={<CreateAccountPage />} />
+          <Route path="/create-account" element={<Navigate to="/signup-pricing" replace />} />
           <Route path="/signup-pricing" element={<SignupPricingPage />} />
           <Route path="/company-admin-checkout" element={<CompanyAdminInfoPage />} />
           <Route path="/company-admin-payment" element={<CompanyAdminCheckoutPage />} />
           <Route path="/demo-onboarding" element={<DemoOnboardingPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/who-we-are" element={<WhoWeArePage />} />
           <Route path="/contact-us" element={<ContactUsPage />} />
           <Route path="/who-is-it-for/:audienceSlug" element={<AudienceDetailPage />} />

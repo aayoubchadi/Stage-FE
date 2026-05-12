@@ -442,16 +442,17 @@ router.post('/demo/paypal/orders/:orderId/verify', async (request, response, nex
     const adminFullName = normalizeValue(request.body.adminFullName);
     const adminEmail = normalizeEmail(request.body.adminEmail);
     const adminPassword = normalizeValue(request.body.adminPassword);
+    const adminUsername = normalizeValue(request.body.adminUsername);
 
     if (!orderId) {
       throw new HttpError(400, 'PAYPAL_ORDER_ID_REQUIRED', 'orderId is required');
     }
 
-    if (!companyName || !adminFullName || !adminEmail || !adminPassword) {
+    if (!companyName || !adminFullName || !adminEmail || !adminUsername || !adminPassword) {
       throw new HttpError(
         400,
         'BILLING_VALIDATION_ERROR',
-        'companyName, adminFullName, adminEmail, and adminPassword are required'
+        'companyName, adminFullName, adminUsername, adminEmail, and adminPassword are required'
       );
     }
 
@@ -553,15 +554,15 @@ router.post('/demo/paypal/orders/:orderId/verify', async (request, response, nex
 
         const userIsPermissionAware = userCreateFragments.insertColumns.includes('permissions');
         const userInsertSql = userIsPermissionAware
-          ? `INSERT INTO users (company_id, full_name, email, password_hash, role, permissions)
-             VALUES ($1, $2, $3, $4, 'company_admin', $5::jsonb)
+          ? `INSERT INTO users (company_id, full_name, username, email, password_hash, role, permissions)
+             VALUES ($1, $2, $3, $4, $5, 'company_admin', $6::jsonb)
              RETURNING id, company_id, full_name, email::text AS email, role, permissions, is_active, created_at`
-          : `INSERT INTO users (company_id, full_name, email, password_hash, role)
-             VALUES ($1, $2, $3, $4, 'company_admin')
+          : `INSERT INTO users (company_id, full_name, username, email, password_hash, role)
+             VALUES ($1, $2, $3, $4, $5, 'company_admin')
              RETURNING id, company_id, full_name, email::text AS email, role, '{}'::jsonb AS permissions, is_active, created_at`;
         const userInsertParams = userIsPermissionAware
-          ? [company.id, adminFullName, adminEmail, adminPasswordHash, '{}']
-          : [company.id, adminFullName, adminEmail, adminPasswordHash];
+          ? [company.id, adminFullName, adminUsername, adminEmail, adminPasswordHash, '{}']
+          : [company.id, adminFullName, adminUsername, adminEmail, adminPasswordHash];
 
         const { rows: userRows } = await client.query(userInsertSql, userInsertParams);
 
@@ -733,12 +734,13 @@ router.post('/paypal/orders/:orderId/capture', async (request, response, next) =
     const adminFullName = normalizeValue(request.body.adminFullName);
     const adminEmail = normalizeEmail(request.body.adminEmail);
     const adminPassword = normalizeValue(request.body.adminPassword);
+    const adminUsername = normalizeValue(request.body.adminUsername);
 
-    if (!companyName || !adminFullName || !adminEmail || !adminPassword) {
+    if (!companyName || !adminFullName || !adminEmail || !adminUsername || !adminPassword) {
       throw new HttpError(
         400,
         'BILLING_VALIDATION_ERROR',
-        'companyName, adminFullName, adminEmail, and adminPassword are required'
+        'companyName, adminFullName, adminUsername, adminEmail, and adminPassword are required'
       );
     }
 
@@ -851,10 +853,10 @@ router.post('/paypal/orders/:orderId/capture', async (request, response, next) =
         const company = companyRows[0];
 
         const { rows: userRows } = await client.query(
-          `INSERT INTO users (company_id, full_name, email, password_hash, role)
-           VALUES ($1, $2, $3, $4, 'company_admin')
+          `INSERT INTO users (company_id, full_name, username, email, password_hash, role)
+           VALUES ($1, $2, $3, $4, $5, 'company_admin')
            RETURNING id, company_id, full_name, email::text AS email, role, is_active, created_at`,
-          [company.id, adminFullName, adminEmail, adminPasswordHash]
+          [company.id, adminFullName, adminUsername, adminEmail, adminPasswordHash]
         );
 
         const user = userRows[0];

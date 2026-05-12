@@ -1,51 +1,39 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+﻿import { useState } from 'react';
 import Header from '../components/Header';
 import PageBackground from '../components/PageBackground';
-import { getAccounts, saveAccounts, ensureSeedAccount } from '../lib/authStore';
+import { forgotPasswordRequest } from '../services/authApi';
 import { useLanguage } from '../lib/i18n';
 
 export default function ForgotPasswordPage() {
   const { t } = useLanguage();
   const [email, setEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
-  const navigate = useNavigate();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    ensureSeedAccount();
 
-    if (newPassword.length < 6) {
-      setMessage(t('auth.forgotPassword.passwordMin'));
+    if (!email) {
+      setMessage('Email is required.');
       setMessageType('error');
       return;
     }
 
-    if (newPassword !== confirmNewPassword) {
-      setMessage(t('auth.forgotPassword.passwordMismatch'));
-      setMessageType('error');
-      return;
+    setIsSubmitting(true);
+    setMessage('');
+    setMessageType('');
+
+    try {
+      await forgotPasswordRequest(email);
+      setMessage('If an account exists, a reset link will be sent to your email.');
+      setMessageType('success');
+    } catch (error) {
+      setMessage('If an account exists, a reset link will be sent to your email.');
+      setMessageType('success');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const accounts = getAccounts();
-    const emailLower = email.trim().toLowerCase();
-
-    if (!accounts[emailLower]) {
-      setMessage(t('auth.forgotPassword.noAccount'));
-      setMessageType('error');
-      return;
-    }
-
-    accounts[emailLower].password = newPassword;
-    saveAccounts(accounts);
-    setMessage(t('auth.forgotPassword.success'));
-    setMessageType('success');
-    setTimeout(() => {
-      navigate(`/login?email=${encodeURIComponent(emailLower)}`);
-    }, 900);
   };
 
   return (
@@ -55,44 +43,24 @@ export default function ForgotPasswordPage() {
       <main className="section section-shell auth-main">
         <section className="auth-wrap">
           <p className="eyebrow">{t('auth.forgotPassword.eyebrow')}</p>
-          <h1>{t('auth.forgotPassword.title')}</h1>
-          <p className="auth-hint">{t('auth.forgotPassword.hint')}</p>
+          <h1>Request Password Reset</h1>
+          <p className="auth-hint">Enter your email address to receive a link to reset your password.</p>
 
           <form className="auth-form" onSubmit={handleSubmit}>
             <label>
-              {t('auth.forgotPassword.email')}
+              {t('auth.forgotPassword.email') || 'Email'}
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder={t('auth.placeholders.email')}
+                placeholder={t('auth.placeholders.email') || 'your@email.com'}
                 required
               />
             </label>
 
-            <label>
-              {t('auth.forgotPassword.newPassword')}
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder={t('auth.placeholders.passwordMin')}
-                required
-              />
-            </label>
-
-            <label>
-              {t('auth.forgotPassword.confirmPassword')}
-              <input
-                type="password"
-                value={confirmNewPassword}
-                onChange={(e) => setConfirmNewPassword(e.target.value)}
-                placeholder={t('auth.placeholders.retypePassword')}
-                required
-              />
-            </label>
-
-            <button type="submit" className="btn btn-primary">{t('auth.forgotPassword.submit')}</button>
+            <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+              {isSubmitting ? 'Submitting...' : 'Send Reset Link'}
+            </button>
           </form>
 
           <p className={`form-message ${messageType}`} aria-live="polite">
@@ -100,8 +68,8 @@ export default function ForgotPasswordPage() {
           </p>
 
           <div className="auth-links">
-            <a href="/login">{t('auth.forgotPassword.backToLogin')}</a>
-            <a href="/create-account">{t('auth.forgotPassword.createAccount')}</a>
+            <a href="/login">{t('auth.forgotPassword.backToLogin') || 'Back to Login'}</a>
+            <a href="/signup-pricing">{t('auth.forgotPassword.createAccount') || 'Create Account'}</a>
           </div>
         </section>
       </main>

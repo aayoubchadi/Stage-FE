@@ -65,6 +65,7 @@ $$;
 CREATE TABLE IF NOT EXISTS platform_admins (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email CITEXT NOT NULL UNIQUE,
+  username CITEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   full_name VARCHAR(120) NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -158,6 +159,7 @@ CREATE TABLE IF NOT EXISTS users (
   company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   full_name VARCHAR(120) NOT NULL,
   email CITEXT NOT NULL,
+  username CITEXT NOT NULL,
   password_hash TEXT NOT NULL,
   role account_role NOT NULL DEFAULT 'employee',
   permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -165,8 +167,10 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT uq_users_company_email UNIQUE (company_id, email),
+  CONSTRAINT uq_users_company_username UNIQUE (company_id, username),
   CONSTRAINT uq_users_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_users_email_not_blank CHECK (length(btrim(email::text)) > 0),
+  CONSTRAINT ck_users_username_not_blank CHECK (length(btrim(username::text)) > 0),
   CONSTRAINT ck_users_full_name_not_blank CHECK (length(btrim(full_name)) > 0),
   CONSTRAINT ck_users_permissions_is_object CHECK (jsonb_typeof(permissions) = 'object')
 );
@@ -677,7 +681,7 @@ CREATE POLICY users_auth_email_lookup_policy ON users
 FOR SELECT
 USING (
   NULLIF(current_setting('app.auth_mode', true), '') = 'login'
-  AND email = NULLIF(current_setting('app.auth_email', true), '')::CITEXT
+  AND username = NULLIF(current_setting('app.auth_username', true), '')::CITEXT
 );
 
 DROP POLICY IF EXISTS company_subscriptions_isolation_policy ON company_subscriptions;

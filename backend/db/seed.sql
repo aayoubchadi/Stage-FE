@@ -26,12 +26,13 @@ WHERE s.email = sae.email;
 DELETE FROM auth_access_token_blacklist
 WHERE expires_at <= NOW();
 
-INSERT INTO platform_admins (email, password_hash, full_name, is_active)
+INSERT INTO platform_admins (email, username, password_hash, full_name, is_active)
 VALUES
-  ('stockpro@admin.com', crypt('StockPro@Admin2026', gen_salt('bf', 10)), 'StockPro Master Admin', TRUE),
-  ('ayoubchadi@stockpro.com', crypt('StockPro@Admin2026', gen_salt('bf', 10)), 'StockPro Co-Admin', TRUE)
+  ('stockpro@admin.com', 'stockpro_admin', crypt('StockPro@Admin2026', gen_salt('bf', 10)), 'StockPro Master Admin', TRUE),
+  ('ayoubchadi@stockpro.com', 'ayoub_chadi', crypt('StockPro@Admin2026', gen_salt('bf', 10)), 'StockPro Co-Admin', TRUE)
 ON CONFLICT (email) DO UPDATE
 SET
+  username = EXCLUDED.username,
   password_hash = EXCLUDED.password_hash,
   full_name = EXCLUDED.full_name,
   is_active = TRUE;
@@ -147,20 +148,21 @@ SET
   raw_payload = EXCLUDED.raw_payload,
   updated_at = NOW();
 
-INSERT INTO users (company_id, full_name, email, password_hash, role, permissions)
-SELECT c.id, 'Acme Admin', 'admin@acme.local', crypt('Admin@123', gen_salt('bf', 10)), 'company_admin', '{}'::jsonb
+INSERT INTO users (company_id, full_name, email, username, password_hash, role, permissions)
+SELECT c.id, 'Acme Admin', 'admin@acme.local', 'acme_admin', crypt('Admin@123', gen_salt('bf', 10)), 'company_admin', '{}'::jsonb
 FROM companies c
 WHERE c.slug = 'acme-logistics'
 ON CONFLICT (company_id, email) DO UPDATE
 SET
+  username = EXCLUDED.username,
   full_name = EXCLUDED.full_name,
   password_hash = EXCLUDED.password_hash,
   role = EXCLUDED.role,
   permissions = EXCLUDED.permissions,
   is_active = TRUE;
 
-INSERT INTO users (company_id, full_name, email, password_hash, role, permissions)
-SELECT c.id, 'Acme Employee', 'employee1@acme.local', crypt('Employee@123', gen_salt('bf', 10)), 'employee',
+INSERT INTO users (company_id, full_name, email, username, password_hash, role, permissions)
+SELECT c.id, 'Acme Employee', 'employee1@acme.local', 'acme_employee', crypt('Employee@123', gen_salt('bf', 10)), 'employee',
   jsonb_build_object(
     'inventory.view', TRUE,
     'reports.view', TRUE,
@@ -170,18 +172,20 @@ FROM companies c
 WHERE c.slug = 'acme-logistics'
 ON CONFLICT (company_id, email) DO UPDATE
 SET
+  username = EXCLUDED.username,
   full_name = EXCLUDED.full_name,
   password_hash = EXCLUDED.password_hash,
   role = EXCLUDED.role,
   permissions = EXCLUDED.permissions,
   is_active = TRUE;
 
-INSERT INTO users (company_id, full_name, email, password_hash, role, permissions)
-SELECT c.id, 'Nova Admin', 'admin@nova.local', crypt('NovaAdmin@123', gen_salt('bf', 10)), 'company_admin', '{}'::jsonb
+INSERT INTO users (company_id, full_name, email, username, password_hash, role, permissions)
+SELECT c.id, 'Nova Admin', 'admin@nova.local', 'nova_admin', crypt('NovaAdmin@123', gen_salt('bf', 10)), 'company_admin', '{}'::jsonb
 FROM companies c
 WHERE c.slug = 'nova-retail'
 ON CONFLICT (company_id, email) DO UPDATE
 SET
+  username = EXCLUDED.username,
   full_name = EXCLUDED.full_name,
   password_hash = EXCLUDED.password_hash,
   role = EXCLUDED.role,

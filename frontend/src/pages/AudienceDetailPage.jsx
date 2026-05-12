@@ -91,7 +91,7 @@ export default function AudienceDetailPage() {
                             <a href="#audience-solutions" className="btn btn-secondary">
                                 {copy.solutionsButton}
                             </a>
-                            <Link to="/create-account" className="btn btn-primary">
+                            <Link to="/signup-pricing" className="btn btn-primary">
                                 {copy.createAccount}
                             </Link>
                         </div>
@@ -175,7 +175,7 @@ export default function AudienceDetailPage() {
                     <div className="audience-plan-footer">
                         <p>{copy.planFooter}</p>
                         <div className="audience-plan-actions">
-                            <Link to="/create-account" className="btn btn-primary">
+                            <Link to="/signup-pricing" className="btn btn-primary">
                                 {profileContent.ctaPrimary || copy.startTrial}
                             </Link>
                         </div>

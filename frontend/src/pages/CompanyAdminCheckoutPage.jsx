@@ -401,7 +401,7 @@ export default function CompanyAdminCheckoutPage() {
           });
 
           const loginData = await loginRequest({
-            email: currentForm.adminEmail.trim().toLowerCase(),
+            username: currentForm.adminUsername,
             password: currentForm.adminPassword,
             companyId: captured?.company?.id || null,
             accountScope: 'tenant',

@@ -224,19 +224,19 @@ async function runWithCompanyScope(companyId, operation) {
   });
 }
 
-async function findTenantUsersByEmail(email) {
+async function findTenantUsersByUsername(username) {
   return withDbClient(async (client) => {
     try {
       await client.query('BEGIN');
       await client.query("SELECT set_config('app.auth_mode', 'login', true)");
-      await client.query("SELECT set_config('app.auth_email', $1, true)", [email]);
+      await client.query("SELECT set_config('app.auth_username', $1, true)", [username]);
 
       const result = await client.query(
-        `SELECT id, company_id, full_name, email::text AS email, password_hash, role, is_active
+        `SELECT id, company_id, full_name, email::text AS email, username::text AS username, password_hash, role, is_active
          FROM users
-         WHERE email = $1
+         WHERE username = $1
          ORDER BY created_at ASC`,
-        [email]
+        [username]
       );
 
       await client.query('COMMIT');
@@ -454,14 +454,15 @@ router.post('/register', registerRateLimiter, async (request, response, next) =>
     const companyId = normalizeValue(request.body.companyId);
     const fullName = normalizeValue(request.body.fullName);
     const email = normalizeEmail(request.body.email);
+    const username = request.body.username ? String(request.body.username).trim() : '';
     const password = normalizeValue(request.body.password);
     const role = normalizeRole(request.body.role);
 
-    if (!fullName || !email || !password) {
+    if (!fullName || !email || !password || !username) {
       throw new HttpError(
         400,
         'AUTH_VALIDATION_ERROR',
-        'fullName, email, and password are required'
+        'fullName, email, username, and password are required'
       );
     }
 
@@ -571,10 +572,10 @@ router.post('/register', registerRateLimiter, async (request, response, next) =>
 
           if (env.autoApproveSignup) {
             const { rows: insertedUserRows } = await client.query(
-              `INSERT INTO users (company_id, full_name, email, password_hash, role, is_active)
-               VALUES ($1, $2, $3, $4, $5, TRUE)
-               RETURNING id, company_id, full_name, email::text AS email, role`,
-              [resolvedCompanyId, fullName, email, passwordHash, role]
+              `INSERT INTO users (company_id, full_name, username, email, password_hash, role, is_active)
+               VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+               RETURNING id, company_id, full_name, username::text AS username, email::text AS email, role`,
+              [resolvedCompanyId, fullName, username, email, passwordHash, role]
             );
 
             await client.query('COMMIT');
@@ -582,10 +583,10 @@ router.post('/register', registerRateLimiter, async (request, response, next) =>
           }
 
           const { rows: insertedUserRows } = await client.query(
-            `INSERT INTO users (company_id, full_name, email, password_hash, role, is_active)
-             VALUES ($1, $2, $3, $4, $5, FALSE)
-             RETURNING id, company_id, full_name, email::text AS email, role`,
-            [resolvedCompanyId, fullName, email, passwordHash, role]
+            `INSERT INTO users (company_id, full_name, username, email, password_hash, role, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6, FALSE)
+             RETURNING id, company_id, full_name, username::text AS username, email::text AS email, role`,
+            [resolvedCompanyId, fullName, username, email, passwordHash, role]
           );
 
           const insertedUser = insertedUserRows[0];
@@ -705,16 +706,16 @@ router.post('/register', registerRateLimiter, async (request, response, next) =>
 
 router.post('/login', loginRateLimiter, async (request, response, next) => {
   try {
-    const email = normalizeEmail(request.body.email);
+    const username = request.body.username ? String(request.body.username).trim() : '';
     const password = normalizeValue(request.body.password);
     const accountScope = normalizeValue(request.body.accountScope);
     const companyId = normalizeValue(request.body.companyId);
 
-    if (!email || !password) {
+    if (!username || !password) {
       throw new HttpError(
         400,
         'AUTH_VALIDATION_ERROR',
-        'email and password are required'
+        'username and password are required'
       );
     }
 
@@ -728,11 +729,11 @@ router.post('/login', loginRateLimiter, async (request, response, next) => {
 
     if (!accountScope || accountScope === 'platform') {
       const { rows: platformRows } = await query(
-        `SELECT id, full_name, email::text AS email, password_hash, is_active
+        `SELECT id, full_name, email::text AS email, username::text as username, password_hash, is_active
          FROM platform_admins
-         WHERE email = $1
+         WHERE username = $1
          LIMIT 1`,
-        [email]
+        [username]
       );
 
       if (platformRows.length === 1) {
@@ -748,7 +749,7 @@ router.post('/login', loginRateLimiter, async (request, response, next) => {
           throw new HttpError(
             401,
             'AUTH_INVALID_CREDENTIALS',
-            'Invalid email or password'
+            'Invalid username or password'
           );
         }
 
@@ -797,7 +798,7 @@ router.post('/login', loginRateLimiter, async (request, response, next) => {
         throw new HttpError(
           401,
           'AUTH_INVALID_CREDENTIALS',
-          'Invalid email or password'
+          'Invalid username or password'
         );
       }
     }
@@ -806,13 +807,13 @@ router.post('/login', loginRateLimiter, async (request, response, next) => {
       let resolvedCompanyId = companyId;
 
       if (!resolvedCompanyId) {
-        const matchingUsers = await findTenantUsersByEmail(email);
+        const matchingUsers = await findTenantUsersByUsername(username);
 
         if (matchingUsers.length === 0) {
           throw new HttpError(
             401,
             'AUTH_INVALID_CREDENTIALS',
-            'Invalid email or password'
+            'Invalid username or password'
           );
         }
 
@@ -897,10 +898,10 @@ router.post('/login', loginRateLimiter, async (request, response, next) => {
            FROM users u
            JOIN companies c ON c.id = u.company_id
            JOIN subscription_plans sp ON sp.id = c.subscription_plan_id
-           WHERE u.email = $1
+           WHERE u.username = $1
              AND u.company_id = $2
            LIMIT 2`,
-          [email, resolvedCompanyId]
+          [username, resolvedCompanyId]
         );
       });
 
@@ -908,7 +909,7 @@ router.post('/login', loginRateLimiter, async (request, response, next) => {
         throw new HttpError(
           401,
           'AUTH_INVALID_CREDENTIALS',
-          'Invalid email or password'
+          'Invalid username or password'
         );
       }
 
@@ -1374,11 +1375,13 @@ router.post('/register/google', registerRateLimiter, async (request, response, n
 
         const randomPasswordHash = await bcrypt.hash(generateRefreshToken(), 12);
 
+        const pseudoUsername = email.split('@')[0] + Math.floor(Math.random() * 1000);
+
         const { rows: insertedUserRows } = await client.query(
-          `INSERT INTO users (company_id, full_name, email, password_hash, role, is_active)
-           VALUES ($1, $2, $3, $4, 'employee', $5)
-           RETURNING id, company_id, full_name, email::text AS email, role`,
-          [resolvedCompanyId, fullName, email, randomPasswordHash, env.autoApproveSignup]
+          `INSERT INTO users (company_id, full_name, username, email, password_hash, role, is_active)
+           VALUES ($1, $2, $3, $4, $5, 'employee', $6)
+           RETURNING id, company_id, full_name, username::text AS username, email::text AS email, role`,
+          [resolvedCompanyId, fullName, pseudoUsername, email, randomPasswordHash, env.autoApproveSignup]
         );
 
         const insertedUser = insertedUserRows[0];
@@ -1569,6 +1572,70 @@ router.post('/refresh', refreshRateLimiter, async (request, response, next) => {
       userAgent: request.headers['user-agent'] || null,
     });
 
+    next(error);
+  }
+});
+
+// Basic in-memory store for reset tokens for simplicity (use Redis or DB in production)
+const resetTokensStore = new Map();
+
+router.post('/forgot-password', async (request, response, next) => {
+  try {
+    const email = normalizeEmail(request.body.email);
+
+    if (!email) {
+      throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Email is required');
+    }
+
+    const { rows } = await query(
+      `SELECT id, email::text AS email FROM users WHERE email = $1 AND is_active = TRUE LIMIT 1`,
+      [email]
+    );
+
+    if (rows.length > 0) {
+      const user = rows[0];
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      
+      resetTokensStore.set(resetToken, {
+        userId: user.id,
+        email: user.email,
+        expires: Date.now() + 1000 * 60 * 15 // 15 mins
+      });
+
+      await sendPasswordResetEmail(user.email, resetToken);
+    }
+
+    // Always return 200 to prevent email enumeration
+    response.json({ data: { message: 'If that email is in our database, we have sent a reset link to it.' } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/reset-password', async (request, response, next) => {
+  try {
+    const { token, newPassword } = request.body;
+
+    if (!token || !newPassword) {
+      throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Token and new password are required');
+    }
+
+    const tokenData = resetTokensStore.get(token);
+    if (!tokenData || tokenData.expires < Date.now()) {
+      throw new HttpError(400, 'AUTH_VALIDATION_ERROR', 'Invalid or expired token');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await query(
+      `UPDATE users SET password_hash = $1 WHERE id = $2`,
+      [passwordHash, tokenData.userId]
+    );
+
+    resetTokensStore.delete(token);
+
+    response.json({ data: { message: 'Password reset successful' } });
+  } catch (error) {
     next(error);
   }
 });

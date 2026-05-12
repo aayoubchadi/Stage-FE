@@ -124,7 +124,7 @@ export default function LoginPage() {
 
           <div className="auth-links">
             <a href="/forgot-password">{t('auth.login.forgot')}</a>
-            <a href="/create-account">{t('auth.login.createAccount')}</a>
+            <a href="/signup-pricing">{t('auth.login.createAccount')}</a>
           </div>
         </section>
       </main>
