@@ -7,6 +7,8 @@ import dashboardRoutes from './routes/dashboardRoutes.js';
 import companyRoutes from './routes/companyRoutes.js';
 import productRoutes from './routes/productRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
+import supplierRoutes from './routes/supplierRoutes.js';
+import purchaseOrderRoutes from './routes/purchaseOrderRoutes.js';
 import { notFound } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -29,6 +31,8 @@ app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/company', companyRoutes);
 app.use('/api/v1/products', productRoutes);
 app.use('/api/v1/inventory', inventoryRoutes);
+app.use('/api/v1/suppliers', supplierRoutes);
+app.use('/api/v1/purchase-orders', purchaseOrderRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
