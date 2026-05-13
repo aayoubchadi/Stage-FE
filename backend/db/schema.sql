@@ -821,3 +821,54 @@ CREATE TRIGGER trg_purchase_orders_updated_at BEFORE UPDATE ON purchase_orders F
 DROP TRIGGER IF EXISTS trg_purchase_order_items_updated_at ON purchase_order_items;
 CREATE TRIGGER trg_purchase_order_items_updated_at BEFORE UPDATE ON purchase_order_items FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+
+-- ==========================================
+-- SALES & ORDER FULFILLMENT EXTENSIONS
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS customers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  name VARCHAR(180) NOT NULL,
+  email CITEXT,
+  phone VARCHAR(50),
+  address TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_customers_company_name UNIQUE (company_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS sales_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+  order_number VARCHAR(100) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  order_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_so_company_number UNIQUE (company_id, order_number),
+  CONSTRAINT ck_so_status CHECK (status IN ('draft', 'pending', 'processing', 'shipped', 'delivered', 'canceled'))
+);
+
+CREATE TABLE IF NOT EXISTS sales_order_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sales_order_id UUID NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  unit_price NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (unit_price >= 0),
+  shipped_quantity INTEGER NOT NULL DEFAULT 0 CHECK (shipped_quantity >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_customers_updated_at ON customers;
+CREATE TRIGGER trg_customers_updated_at BEFORE UPDATE ON customers FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_sales_orders_updated_at ON sales_orders;
+CREATE TRIGGER trg_sales_orders_updated_at BEFORE UPDATE ON sales_orders FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_sales_order_items_updated_at ON sales_order_items;
+CREATE TRIGGER trg_sales_order_items_updated_at BEFORE UPDATE ON sales_order_items FOR EACH ROW EXECUTE FUNCTION set_updated_at();
