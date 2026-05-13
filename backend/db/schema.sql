@@ -714,3 +714,57 @@ WITH CHECK (
   company_id = NULLIF(current_setting('app.current_company_id', TRUE), '')::UUID
   OR NULLIF(current_setting('app.current_scope', TRUE), '') = 'platform'
 );
+
+-- Inventory Extensions
+CREATE TABLE IF NOT EXISTS product_categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  name VARCHAR(120) NOT NULL,
+  description TEXT,
+  parent_id UUID REFERENCES product_categories(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_categories_company_name UNIQUE (company_id, name)
+);
+
+ALTER TABLE products 
+  ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES product_categories(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS barcode VARCHAR(100);
+
+ALTER TABLE products DROP CONSTRAINT IF EXISTS uq_products_company_barcode;
+ALTER TABLE products ADD CONSTRAINT uq_products_company_barcode UNIQUE (company_id, barcode);
+
+CREATE TABLE IF NOT EXISTS locations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  name VARCHAR(120) NOT NULL,
+  type VARCHAR(50) NOT NULL DEFAULT 'warehouse',
+  address TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_locations_company_name UNIQUE (company_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS inventory_levels (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+  last_counted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_inventory_levels_location_product UNIQUE (location_id, product_id)
+);
+
+DROP TRIGGER IF EXISTS trg_categories_updated_at ON product_categories;
+CREATE TRIGGER trg_categories_updated_at BEFORE UPDATE ON product_categories FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_locations_updated_at ON locations;
+CREATE TRIGGER trg_locations_updated_at BEFORE UPDATE ON locations FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_inventory_levels_updated_at ON inventory_levels;
+CREATE TRIGGER trg_inventory_levels_updated_at BEFORE UPDATE ON inventory_levels FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES locations(id) ON DELETE SET NULL;
