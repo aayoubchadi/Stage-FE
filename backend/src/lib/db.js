@@ -14,6 +14,8 @@ const pool = new Pool({
 
 export const query = (text, params) => pool.query(text, params);
 
+export const getClient = () => pool.connect();
+
 export async function withDbClient(handler) {
   const client = await pool.connect();
 
@@ -33,3 +35,10 @@ export async function checkDatabaseConnection() {
 }
 
 export const closePool = () => pool.end();
+
+export const db = {
+  query,
+  getClient,
+};
+
+export default db;

@@ -21,7 +21,7 @@ router.use(requireTenantAccess);
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      \`SELECT * FROM customers WHERE company_id = $1 ORDER BY name ASC\`,
+      `SELECT * FROM customers WHERE company_id = $1 ORDER BY name ASC`,
       [req.tenant.companyId]
     );
     res.json({ customers: rows });
@@ -35,7 +35,7 @@ router.get('/:id', async (req, res, next) => {
   try {
     const customerId = req.params.id;
     const { rows } = await db.query(
-      \`SELECT * FROM customers WHERE id = $1 AND company_id = $2\`,
+      `SELECT * FROM customers WHERE id = $1 AND company_id = $2`,
       [customerId, req.tenant.companyId]
     );
 
@@ -59,9 +59,9 @@ router.post('/', async (req, res, next) => {
     }
 
     const { rows } = await db.query(
-      \`INSERT INTO customers (company_id, name, email, phone, address)
+      `INSERT INTO customers (company_id, name, email, phone, address)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING *\`,
+       RETURNING *`,
       [req.tenant.companyId, name, email || null, phone || null, address || null]
     );
 
@@ -83,14 +83,14 @@ router.put('/:id', async (req, res, next) => {
     const { name, email, phone, address, is_active } = req.body;
     
     const { rows, rowCount } = await db.query(
-      \`UPDATE customers 
+      `UPDATE customers 
        SET name = COALESCE($1, name),
            email = COALESCE($2, email),
            phone = COALESCE($3, phone),
            address = COALESCE($4, address),
            is_active = COALESCE($5, is_active)
        WHERE id = $6 AND company_id = $7
-       RETURNING *\`,
+       RETURNING *`,
       [name, email, phone, address, is_active, customerId, req.tenant.companyId]
     );
 

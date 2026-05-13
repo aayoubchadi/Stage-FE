@@ -769,6 +769,21 @@ CREATE TRIGGER trg_inventory_levels_updated_at BEFORE UPDATE ON inventory_levels
 
 ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES locations(id) ON DELETE SET NULL;
 
+CREATE TABLE IF NOT EXISTS stock_audits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
+  scheduled_date TIMESTAMPTZ,
+  notes TEXT,
+  status VARCHAR(20) NOT NULL DEFAULT 'scheduled',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_stock_audits_status CHECK (status IN ('scheduled', 'in_progress', 'completed', 'canceled'))
+);
+
+DROP TRIGGER IF EXISTS trg_stock_audits_updated_at ON stock_audits;
+CREATE TRIGGER trg_stock_audits_updated_at BEFORE UPDATE ON stock_audits FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 -- ==========================================
 -- SUPPLY CHAIN & PURCHASING EXTENSIONS
 -- ==========================================

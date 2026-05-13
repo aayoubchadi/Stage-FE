@@ -14,17 +14,17 @@ router.get('/summary', async (req, res, next) => {
     const { companyId } = req.tenant;
 
     const lowStockResult = await db.query(
-      \`SELECT count(*) as low_stock_count FROM products WHERE company_id = $1 AND quantity_in_stock <= low_stock_threshold\`,
+      `SELECT count(*) as low_stock_count FROM products WHERE company_id = $1 AND quantity_in_stock <= low_stock_threshold`,
       [companyId]
     );
 
     const totalValueResult = await db.query(
-      \`SELECT COALESCE(SUM(quantity_in_stock * unit_price), 0) as total_inventory_value FROM products WHERE company_id = $1\`,
+      `SELECT COALESCE(SUM(quantity_in_stock * unit_price), 0) as total_inventory_value FROM products WHERE company_id = $1`,
       [companyId]
     );
 
     const activeOrdersResult = await db.query(
-      \`SELECT count(*) as active_sales_orders FROM sales_orders WHERE company_id = $1 AND status IN ('pending', 'processing')\`,
+      `SELECT count(*) as active_sales_orders FROM sales_orders WHERE company_id = $1 AND status IN ('pending', 'processing')`,
       [companyId]
     );
 
@@ -43,11 +43,11 @@ router.get('/low-stock', async (req, res, next) => {
   try {
     const { companyId } = req.tenant;
     const result = await db.query(
-      \`SELECT id, name, sku, quantity_in_stock, low_stock_threshold 
+      `SELECT id, name, sku, quantity_in_stock, low_stock_threshold 
        FROM products 
        WHERE company_id = $1 AND quantity_in_stock <= low_stock_threshold
        ORDER BY quantity_in_stock ASC
-       LIMIT 50\`,
+       LIMIT 50`,
       [companyId]
     );
     res.json(result.rows);

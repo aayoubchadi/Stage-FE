@@ -14,11 +14,11 @@ router.use(requireTenantAccess);
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      \`SELECT so.*, c.name as customer_name 
+      `SELECT so.*, c.name as customer_name 
        FROM sales_orders so
        JOIN customers c ON c.id = so.customer_id
        WHERE so.company_id = $1
-       ORDER BY so.created_at DESC\`,
+       ORDER BY so.created_at DESC`,
       [req.tenant.companyId]
     );
     res.json({ salesOrders: rows });
@@ -33,10 +33,10 @@ router.get('/:id', async (req, res, next) => {
   try {
     // Get SO
     const soResult = await db.query(
-      \`SELECT so.*, c.name as customer_name 
+      `SELECT so.*, c.name as customer_name 
        FROM sales_orders so
        JOIN customers c ON c.id = so.customer_id
-       WHERE so.id = $1 AND so.company_id = $2\`,
+       WHERE so.id = $1 AND so.company_id = $2`,
       [req.params.id, req.tenant.companyId]
     );
 
@@ -47,10 +47,10 @@ router.get('/:id', async (req, res, next) => {
 
     // Get Items
     const itemsResult = await db.query(
-      \`SELECT soi.*, p.name as product_name, p.sku
+      `SELECT soi.*, p.name as product_name, p.sku
        FROM sales_order_items soi
        JOIN products p ON p.id = soi.product_id
-       WHERE soi.sales_order_id = $1\`,
+       WHERE soi.sales_order_id = $1`,
       [salesOrder.id]
     );
     
@@ -77,9 +77,9 @@ router.post('/', async (req, res, next) => {
 
     // Create SO
     const soRes = await client.query(
-      \`INSERT INTO sales_orders (company_id, customer_id, order_number, notes)
+      `INSERT INTO sales_orders (company_id, customer_id, order_number, notes)
        VALUES ($1, $2, $3, $4)
-       RETURNING *\`,
+       RETURNING *`,
       [req.tenant.companyId, customer_id, order_number, notes || null]
     );
     const salesOrder = soRes.rows[0];
@@ -93,20 +93,20 @@ router.post('/', async (req, res, next) => {
       
       // We don't deduct stock purely yet until shipment, but we make sure the item exists
       const productRes = await client.query(
-        \`SELECT id, unit_price FROM products WHERE id = $1 AND company_id = $2\`,
+        `SELECT id, unit_price FROM products WHERE id = $1 AND company_id = $2`,
         [item.product_id, req.tenant.companyId]
       );
       
       if (productRes.rows.length === 0) {
-        throw new HttpError(404, 'product_not_found', \`Product \${item.product_id} not found.\`);
+        throw new HttpError(404, 'product_not_found', `Product ${item.product_id} not found.`);
       }
       
       const defaultPrice = productRes.rows[0].unit_price;
 
       const itemRes = await client.query(
-        \`INSERT INTO sales_order_items (sales_order_id, product_id, quantity, unit_price)
+        `INSERT INTO sales_order_items (sales_order_id, product_id, quantity, unit_price)
          VALUES ($1, $2, $3, $4)
-         RETURNING *\`,
+         RETURNING *`,
         [salesOrder.id, item.product_id, item.quantity, item.unit_price !== undefined ? item.unit_price : defaultPrice]
       );
       createdItems.push(itemRes.rows[0]);
@@ -145,7 +145,7 @@ router.post('/:id/ship', async (req, res, next) => {
 
     // Verify SO belongs to company
     const soRes = await client.query(
-      \`SELECT status FROM sales_orders WHERE id = $1 AND company_id = $2 FOR UPDATE\`,
+      `SELECT status FROM sales_orders WHERE id = $1 AND company_id = $2 FOR UPDATE`,
       [soId, req.tenant.companyId]
     );
 
@@ -156,12 +156,12 @@ router.post('/:id/ship', async (req, res, next) => {
     for (const shipInfo of shipped_items) {
       // Find item
       const itemRes = await client.query(
-        \`SELECT * FROM sales_order_items WHERE id = $1 AND sales_order_id = $2 FOR UPDATE\`,
+        `SELECT * FROM sales_order_items WHERE id = $1 AND sales_order_id = $2 FOR UPDATE`,
         [shipInfo.order_item_id, soId]
       );
 
       if (itemRes.rows.length === 0) {
-         throw new HttpError(404, 'item_not_found', \`SO item \${shipInfo.order_item_id} not found in this SO.\`);
+         throw new HttpError(404, 'item_not_found', `SO item ${shipInfo.order_item_id} not found in this SO.`);
       }
 
       const item = itemRes.rows[0];
@@ -171,48 +171,48 @@ router.post('/:id/ship', async (req, res, next) => {
       
       // Update item shipped quantity
       await client.query(
-        \`UPDATE sales_order_items SET shipped_quantity = shipped_quantity + $1 WHERE id = $2\`,
+        `UPDATE sales_order_items SET shipped_quantity = shipped_quantity + $1 WHERE id = $2`,
         [qtyToShip, item.id]
       );
 
       // Deduct from inventory_levels
       const inventoryRes = await client.query(
-        \`UPDATE inventory_levels SET quantity = quantity - $1 
+        `UPDATE inventory_levels SET quantity = quantity - $1 
          WHERE location_id = $2 AND product_id = $3
-         RETURNING quantity\`,
+         RETURNING quantity`,
         [qtyToShip, location_id, item.product_id]
       );
       
       if (inventoryRes.rows.length === 0) {
-         throw new HttpError(400, 'insufficient_stock', \`Location does not have this product stocked.\`);
+         throw new HttpError(400, 'insufficient_stock', `Location does not have this product stocked.`);
       }
       if (inventoryRes.rows[0].quantity < 0) {
-         throw new HttpError(400, 'insufficient_stock', \`Not enough stock in the specified location.\`);
+         throw new HttpError(400, 'insufficient_stock', `Not enough stock in the specified location.`);
       }
 
       // Update total products quantity
       await client.query(
-        \`UPDATE products SET quantity_in_stock = quantity_in_stock - $1 WHERE id = $2\`,
+        `UPDATE products SET quantity_in_stock = quantity_in_stock - $1 WHERE id = $2`,
         [qtyToShip, item.product_id]
       );
 
       // Record standard movement
       await client.query(
-        \`INSERT INTO stock_movements (company_id, product_id, location_id, movement_type, quantity, note, moved_by)
-         VALUES ($1, $2, $3, 'out', $4, $5, $6)\`,
-        [req.tenant.companyId, item.product_id, location_id, qtyToShip, \`Shipped for SO #\${soId}\`, req.user.id]
+        `INSERT INTO stock_movements (company_id, product_id, location_id, movement_type, quantity, note, moved_by)
+         VALUES ($1, $2, $3, 'out', $4, $5, $6)`,
+        [req.tenant.companyId, item.product_id, location_id, qtyToShip, `Shipped for SO #${soId}`, req.user.id]
       );
     }
     
     // Check if SO is completely shipped to auto set status
     const allItems = await client.query(
-        \`SELECT id, quantity, shipped_quantity FROM sales_order_items WHERE sales_order_id = $1\`,
+        `SELECT id, quantity, shipped_quantity FROM sales_order_items WHERE sales_order_id = $1`,
         [soId]
     );
     const fullyShipped = allItems.rows.every(i => i.shipped_quantity >= i.quantity);
     
     await client.query(
-        \`UPDATE sales_orders SET status = $1 WHERE id = $2\`,
+        `UPDATE sales_orders SET status = $1 WHERE id = $2`,
         [fullyShipped ? 'shipped' : 'processing', soId]
     );
 
