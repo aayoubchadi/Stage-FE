@@ -12,6 +12,7 @@ import purchaseOrderRoutes from './routes/purchaseOrderRoutes.js';
 import customerRoutes from './routes/customerRoutes.js';
 import salesOrderRoutes from './routes/salesOrderRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
+import reportRoutes from './routes/reportRoutes.js';
 import { notFound } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -39,6 +40,7 @@ app.use('/api/v1/purchase-orders', purchaseOrderRoutes);
 app.use('/api/v1/customers', customerRoutes);
 app.use('/api/v1/sales-orders', salesOrderRoutes);
 app.use('/api/v1/audits', auditRoutes);
+app.use('/api/v1/reports', reportRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
