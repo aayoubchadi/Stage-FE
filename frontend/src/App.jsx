@@ -13,6 +13,9 @@ import WhoWeArePage from './pages/WhoWeArePage';
 import ContactUsPage from './pages/ContactUsPage';
 import TeamAccessPage from './pages/TeamAccessPage';
 import InventoryPage from './pages/InventoryPage';
+import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
+import SalesOrdersPage from './pages/SalesOrdersPage';
+import ReportsPage from './pages/ReportsPage';
 import DataExchangePage from './pages/DataExchangePage';
 import WorkspaceBillingPage from './pages/WorkspaceBillingPage';
 import DemoOnboardingPage from './pages/DemoOnboardingPage';
@@ -76,6 +79,30 @@ function App() {
             element={(
               <RequireWorkspaceAccess requiredPermissions={['inventory.view']}>
                 <InventoryPage />
+              </RequireWorkspaceAccess>
+            )}
+          />
+          <Route
+            path="/purchase-orders"
+            element={(
+              <RequireWorkspaceAccess>
+                <PurchaseOrdersPage />
+              </RequireWorkspaceAccess>
+            )}
+          />
+          <Route
+            path="/sales-orders"
+            element={(
+              <RequireWorkspaceAccess>
+                <SalesOrdersPage />
+              </RequireWorkspaceAccess>
+            )}
+          />
+          <Route
+            path="/reports"
+            element={(
+              <RequireWorkspaceAccess requiredPermissions={['reports.view']}>
+                <ReportsPage />
               </RequireWorkspaceAccess>
             )}
           />
