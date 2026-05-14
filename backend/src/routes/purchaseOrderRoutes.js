@@ -14,10 +14,31 @@ router.use(requireTenantAccess);
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT po.*, s.name as supplier_name 
+      `SELECT
+         po.*,
+         s.name AS supplier_name,
+         COALESCE(SUM(poi.quantity * poi.unit_cost), 0) AS total_amount,
+         COALESCE(
+           JSON_AGG(
+             JSON_BUILD_OBJECT(
+               'id', poi.id,
+               'product_id', poi.product_id,
+               'product_name', p.name,
+               'sku', p.sku,
+               'quantity', poi.quantity,
+               'unit_price', poi.unit_cost,
+               'received_quantity', poi.received_quantity
+             )
+             ORDER BY poi.created_at ASC
+           ) FILTER (WHERE poi.id IS NOT NULL),
+           '[]'::json
+         ) AS items
        FROM purchase_orders po
        JOIN suppliers s ON s.id = po.supplier_id
+       LEFT JOIN purchase_order_items poi ON poi.purchase_order_id = po.id
+       LEFT JOIN products p ON p.id = poi.product_id
        WHERE po.company_id = $1
+       GROUP BY po.id, s.name
        ORDER BY po.created_at DESC`,
       [req.tenant.companyId]
     );

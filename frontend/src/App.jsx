@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import SignupPricingPage from './pages/SignupPricingPage';
@@ -21,7 +21,32 @@ import WorkspaceBillingPage from './pages/WorkspaceBillingPage';
 import DemoOnboardingPage from './pages/DemoOnboardingPage';
 import RequireWorkspaceAccess from './components/RequireWorkspaceAccess';
 import { LanguageProvider } from './lib/i18n';
+import { getFirstAllowedWorkspacePath, getSession, getSessionChangeEventName } from './lib/authStore';
 import './index.css';
+
+function PublicLandingRoute() {
+  const [session, setSession] = useState(() => getSession());
+
+  useEffect(() => {
+    const handleSessionChange = () => {
+      setSession(getSession());
+    };
+
+    window.addEventListener(getSessionChangeEventName(), handleSessionChange);
+    window.addEventListener('storage', handleSessionChange);
+
+    return () => {
+      window.removeEventListener(getSessionChangeEventName(), handleSessionChange);
+      window.removeEventListener('storage', handleSessionChange);
+    };
+  }, []);
+
+  if (session?.accessToken && session?.user?.email) {
+    return <Navigate to={getFirstAllowedWorkspacePath(session)} replace />;
+  }
+
+  return <LandingPage />;
+}
 
 function App() {
   useEffect(() => {
@@ -38,7 +63,7 @@ function App() {
     <LanguageProvider>
       <Router>
         <Routes>
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<PublicLandingRoute />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/create-account" element={<Navigate to="/signup-pricing" replace />} />
           <Route path="/signup-pricing" element={<SignupPricingPage />} />

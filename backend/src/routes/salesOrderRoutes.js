@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/requireAuth.js';
 import { requireTenantAccess } from '../middleware/requireTenantAccess.js';
 import db from '../lib/db.js';
 import HttpError from '../lib/httpError.js';
+import { runWithCompanyScope } from '../lib/tenantContext.js';
 
 const router = Router();
 
@@ -14,10 +15,31 @@ router.use(requireTenantAccess);
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT so.*, c.name as customer_name 
+      `SELECT
+         so.*,
+         c.name AS customer_name,
+         COALESCE(SUM(soi.quantity * soi.unit_price), 0) AS total_amount,
+         COALESCE(
+           JSON_AGG(
+             JSON_BUILD_OBJECT(
+               'id', soi.id,
+               'product_id', soi.product_id,
+               'product_name', p.name,
+               'sku', p.sku,
+               'quantity', soi.quantity,
+               'unit_price', soi.unit_price,
+               'shipped_quantity', soi.shipped_quantity
+             )
+             ORDER BY soi.created_at ASC
+           ) FILTER (WHERE soi.id IS NOT NULL),
+           '[]'::json
+         ) AS items
        FROM sales_orders so
        JOIN customers c ON c.id = so.customer_id
+       LEFT JOIN sales_order_items soi ON soi.sales_order_id = so.id
+       LEFT JOIN products p ON p.id = soi.product_id
        WHERE so.company_id = $1
+       GROUP BY so.id, c.name
        ORDER BY so.created_at DESC`,
       [req.tenant.companyId]
     );
@@ -65,7 +87,6 @@ router.get('/:id', async (req, res, next) => {
 // POST /api/v1/sales-orders
 // Create a new SO with items (deducts overall stock availability logically)
 router.post('/', async (req, res, next) => {
-  const client = await db.getClient();
   try {
     const { customer_id, order_number, notes, items } = req.body;
     
@@ -73,58 +94,55 @@ router.post('/', async (req, res, next) => {
       throw new HttpError(400, 'invalid_so', 'Customer, order number, and at least one item are required.');
     }
 
-    await client.query('BEGIN');
-
-    // Create SO
-    const soRes = await client.query(
-      `INSERT INTO sales_orders (company_id, customer_id, order_number, notes)
-       VALUES ($1, $2, $3, $4)
-       RETURNING *`,
-      [req.tenant.companyId, customer_id, order_number, notes || null]
-    );
-    const salesOrder = soRes.rows[0];
-
-    // Create Items and verify stock
-    const createdItems = [];
-    for (const item of items) {
-      if (!item.product_id || !item.quantity) {
-        throw new HttpError(400, 'invalid_so_item', 'Product and quantity are required for each item.');
-      }
-      
-      // We don't deduct stock purely yet until shipment, but we make sure the item exists
-      const productRes = await client.query(
-        `SELECT id, unit_price FROM products WHERE id = $1 AND company_id = $2`,
-        [item.product_id, req.tenant.companyId]
-      );
-      
-      if (productRes.rows.length === 0) {
-        throw new HttpError(404, 'product_not_found', `Product ${item.product_id} not found.`);
-      }
-      
-      const defaultPrice = productRes.rows[0].unit_price;
-
-      const itemRes = await client.query(
-        `INSERT INTO sales_order_items (sales_order_id, product_id, quantity, unit_price)
+    const salesOrder = await runWithCompanyScope(req.tenant.companyId, async (client) => {
+      // Create SO
+      const soRes = await client.query(
+        `INSERT INTO sales_orders (company_id, customer_id, order_number, notes)
          VALUES ($1, $2, $3, $4)
          RETURNING *`,
-        [salesOrder.id, item.product_id, item.quantity, item.unit_price !== undefined ? item.unit_price : defaultPrice]
+        [req.tenant.companyId, customer_id, order_number, notes || null]
       );
-      createdItems.push(itemRes.rows[0]);
-    }
+      const createdSalesOrder = soRes.rows[0];
 
-    await client.query('COMMIT');
-    
-    salesOrder.items = createdItems;
+      // Create Items and verify stock
+      const createdItems = [];
+      for (const item of items) {
+        if (!item.product_id || !item.quantity) {
+          throw new HttpError(400, 'invalid_so_item', 'Product and quantity are required for each item.');
+        }
+        
+        // We don't deduct stock purely yet until shipment, but we make sure the item exists
+        const productRes = await client.query(
+          `SELECT id, unit_price FROM products WHERE id = $1 AND company_id = $2`,
+          [item.product_id, req.tenant.companyId]
+        );
+        
+        if (productRes.rows.length === 0) {
+          throw new HttpError(404, 'product_not_found', `Product ${item.product_id} not found.`);
+        }
+        
+        const defaultPrice = productRes.rows[0].unit_price;
+
+        const itemRes = await client.query(
+          `INSERT INTO sales_order_items (sales_order_id, product_id, quantity, unit_price)
+           VALUES ($1, $2, $3, $4)
+           RETURNING *`,
+          [createdSalesOrder.id, item.product_id, item.quantity, item.unit_price !== undefined ? item.unit_price : defaultPrice]
+        );
+        createdItems.push(itemRes.rows[0]);
+      }
+
+      createdSalesOrder.items = createdItems;
+      return createdSalesOrder;
+    });
+
     res.status(201).json({ salesOrder });
   } catch (error) {
-    await client.query('ROLLBACK');
     if (error.code === '23505') {
       next(new HttpError(409, 'order_number_exists', 'Sales Order number already exists for this company.'));
     } else {
       next(error);
     }
-  } finally {
-    client.release();
   }
 });
 

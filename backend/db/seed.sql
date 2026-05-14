@@ -223,3 +223,326 @@ WHERE c.slug = 'acme-logistics'
       AND sm.product_id = p.id
       AND sm.note = 'Initial inbound stock'
   );
+
+-- Sample operational data for the Acme tenant so purchase, sales, and reports pages
+-- render real records instead of empty states.
+WITH acme_company AS (
+  SELECT id
+  FROM companies
+  WHERE slug = 'acme-logistics'
+),
+acme_admin AS (
+  SELECT u.id
+  FROM users u
+  JOIN acme_company c ON c.id = u.company_id
+  WHERE u.email = 'admin@acme.local'
+),
+office_chair AS (
+  SELECT p.id
+  FROM products p
+  JOIN acme_company c ON c.id = p.company_id
+  WHERE p.sku = 'SKU-CHAIR-01'
+),
+standing_desk AS (
+  SELECT p.id
+  FROM products p
+  JOIN acme_company c ON c.id = p.company_id
+  WHERE p.sku = 'SKU-DESK-LOW'
+),
+acme_location AS (
+  INSERT INTO locations (company_id, name, type, address)
+  SELECT c.id, 'Acme Main Warehouse', 'warehouse', '12 Logistics Park, Suite 8'
+  FROM acme_company c
+  ON CONFLICT (company_id, name) DO UPDATE
+  SET type = EXCLUDED.type,
+      address = EXCLUDED.address
+  RETURNING id, company_id
+),
+acme_supplier_a AS (
+  INSERT INTO suppliers (company_id, name, email, phone, address)
+  SELECT c.id, 'Northwind Supplies', 'orders@northwind.example', '+1 555 100 2100', '88 Industrial Way'
+  FROM acme_company c
+  ON CONFLICT (company_id, name) DO UPDATE
+  SET email = EXCLUDED.email,
+      phone = EXCLUDED.phone,
+      address = EXCLUDED.address
+  RETURNING id, company_id
+),
+acme_supplier_b AS (
+  INSERT INTO suppliers (company_id, name, email, phone, address)
+  SELECT c.id, 'Metro Office Source', 'sales@metrooffice.example', '+1 555 100 2200', '14 Commerce Blvd'
+  FROM acme_company c
+  ON CONFLICT (company_id, name) DO UPDATE
+  SET email = EXCLUDED.email,
+      phone = EXCLUDED.phone,
+      address = EXCLUDED.address
+  RETURNING id, company_id
+),
+acme_customer_a AS (
+  INSERT INTO customers (company_id, name, email, phone, address)
+  SELECT c.id, 'Bluebird Clinics', 'procurement@bluebird.example', '+1 555 200 3100', '410 Health Plaza'
+  FROM acme_company c
+  ON CONFLICT (company_id, name) DO UPDATE
+  SET email = EXCLUDED.email,
+      phone = EXCLUDED.phone,
+      address = EXCLUDED.address
+  RETURNING id, company_id
+),
+acme_customer_b AS (
+  INSERT INTO customers (company_id, name, email, phone, address)
+  SELECT c.id, 'Summit Design Studio', 'orders@summitdesign.example', '+1 555 200 3200', '73 Creative Ave'
+  FROM acme_company c
+  ON CONFLICT (company_id, name) DO UPDATE
+  SET email = EXCLUDED.email,
+      phone = EXCLUDED.phone,
+      address = EXCLUDED.address
+  RETURNING id, company_id
+),
+desk_product AS (
+  INSERT INTO products (company_id, sku, name, description, unit_price, quantity_in_stock, low_stock_threshold)
+  SELECT c.id, 'SKU-DESK-LOW', 'Standing Desk', 'Height adjustable desk', 320.00, 4, 10
+  FROM acme_company c
+  ON CONFLICT (company_id, sku) DO UPDATE
+  SET name = EXCLUDED.name,
+      description = EXCLUDED.description,
+      unit_price = EXCLUDED.unit_price,
+      quantity_in_stock = EXCLUDED.quantity_in_stock,
+      low_stock_threshold = EXCLUDED.low_stock_threshold
+  RETURNING id, company_id
+),
+seed_inventory AS (
+  INSERT INTO inventory_levels (company_id, location_id, product_id, quantity)
+  SELECT c.id, l.id, p.id, v.quantity
+  FROM acme_company c
+  JOIN acme_location l ON l.company_id = c.id
+  JOIN (
+    VALUES
+      ('SKU-CHAIR-01', 40),
+      ('SKU-DESK-LOW', 4)
+  ) AS v(sku, quantity) ON TRUE
+  JOIN products p ON p.company_id = c.id AND p.sku = v.sku
+  ON CONFLICT (location_id, product_id) DO UPDATE
+  SET quantity = EXCLUDED.quantity,
+      last_counted_at = NOW()
+  RETURNING id
+)
+DELETE FROM purchase_order_items poi
+USING purchase_orders po, companies c
+WHERE poi.purchase_order_id = po.id
+  AND po.company_id = c.id
+  AND c.slug = 'acme-logistics'
+  AND po.po_number IN ('PO-ACME-1001', 'PO-ACME-1002');
+
+DELETE FROM purchase_orders po
+USING companies c
+WHERE po.company_id = c.id
+  AND c.slug = 'acme-logistics'
+  AND po.po_number IN ('PO-ACME-1001', 'PO-ACME-1002');
+
+DELETE FROM sales_order_items soi
+USING sales_orders so, companies c
+WHERE soi.sales_order_id = so.id
+  AND so.company_id = c.id
+  AND c.slug = 'acme-logistics'
+  AND so.order_number IN ('SO-ACME-2001', 'SO-ACME-2002');
+
+DELETE FROM sales_orders so
+USING companies c
+WHERE so.company_id = c.id
+  AND c.slug = 'acme-logistics'
+  AND so.order_number IN ('SO-ACME-2001', 'SO-ACME-2002');
+
+WITH acme_company AS (
+  SELECT id
+  FROM companies
+  WHERE slug = 'acme-logistics'
+),
+supplier_a AS (
+  SELECT id
+  FROM suppliers
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND name = 'Northwind Supplies'
+),
+supplier_b AS (
+  SELECT id
+  FROM suppliers
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND name = 'Metro Office Source'
+),
+customer_a AS (
+  SELECT id
+  FROM customers
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND name = 'Bluebird Clinics'
+),
+customer_b AS (
+  SELECT id
+  FROM customers
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND name = 'Summit Design Studio'
+),
+chair_product AS (
+  SELECT id
+  FROM products
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND sku = 'SKU-CHAIR-01'
+),
+desk_product AS (
+  SELECT id
+  FROM products
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND sku = 'SKU-DESK-LOW'
+),
+po_1 AS (
+  INSERT INTO purchase_orders (company_id, supplier_id, po_number, status, expected_delivery_date, notes)
+  SELECT c.id, s.id, 'PO-ACME-1001', 'pending', NOW() + INTERVAL '5 days', 'Quarterly chair restock'
+  FROM acme_company c
+  CROSS JOIN supplier_a s
+  ON CONFLICT (company_id, po_number) DO UPDATE
+  SET supplier_id = EXCLUDED.supplier_id,
+      status = EXCLUDED.status,
+      expected_delivery_date = EXCLUDED.expected_delivery_date,
+      notes = EXCLUDED.notes,
+      updated_at = NOW()
+  RETURNING id
+),
+po_2 AS (
+  INSERT INTO purchase_orders (company_id, supplier_id, po_number, status, expected_delivery_date, notes)
+  SELECT c.id, s.id, 'PO-ACME-1002', 'received', NOW() - INTERVAL '3 days', 'Desk replenishment already received'
+  FROM acme_company c
+  CROSS JOIN supplier_b s
+  ON CONFLICT (company_id, po_number) DO UPDATE
+  SET supplier_id = EXCLUDED.supplier_id,
+      status = EXCLUDED.status,
+      expected_delivery_date = EXCLUDED.expected_delivery_date,
+      notes = EXCLUDED.notes,
+      updated_at = NOW()
+  RETURNING id
+),
+so_1 AS (
+  INSERT INTO sales_orders (company_id, customer_id, order_number, status, notes)
+  SELECT c.id, cu.id, 'SO-ACME-2001', 'pending', 'Bulk chair order for Bluebird Clinics'
+  FROM acme_company c
+  CROSS JOIN customer_a cu
+  ON CONFLICT (company_id, order_number) DO UPDATE
+  SET customer_id = EXCLUDED.customer_id,
+      status = EXCLUDED.status,
+      notes = EXCLUDED.notes,
+      updated_at = NOW()
+  RETURNING id
+),
+so_2 AS (
+  INSERT INTO sales_orders (company_id, customer_id, order_number, status, notes)
+  SELECT c.id, cu.id, 'SO-ACME-2002', 'processing', 'Standing desk order in fulfillment'
+  FROM acme_company c
+  CROSS JOIN customer_b cu
+  ON CONFLICT (company_id, order_number) DO UPDATE
+  SET customer_id = EXCLUDED.customer_id,
+      status = EXCLUDED.status,
+      notes = EXCLUDED.notes,
+      updated_at = NOW()
+  RETURNING id
+)
+INSERT INTO purchase_order_items (purchase_order_id, product_id, quantity, unit_cost)
+SELECT po_1.id, chair_product.id, 12, 95.00
+FROM po_1, chair_product
+UNION ALL
+SELECT po_1.id, desk_product.id, 3, 250.00
+FROM po_1, desk_product
+UNION ALL
+SELECT po_2.id, chair_product.id, 8, 92.50
+FROM po_2, chair_product
+UNION ALL
+SELECT po_2.id, desk_product.id, 2, 245.00
+FROM po_2, desk_product;
+
+WITH acme_company AS (
+  SELECT id
+  FROM companies
+  WHERE slug = 'acme-logistics'
+),
+chair_product AS (
+  SELECT id, unit_price
+  FROM products
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND sku = 'SKU-CHAIR-01'
+),
+desk_product AS (
+  SELECT id, unit_price
+  FROM products
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND sku = 'SKU-DESK-LOW'
+),
+so_1 AS (
+  SELECT id
+  FROM sales_orders
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND order_number = 'SO-ACME-2001'
+),
+so_2 AS (
+  SELECT id
+  FROM sales_orders
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND order_number = 'SO-ACME-2002'
+)
+INSERT INTO sales_order_items (sales_order_id, product_id, quantity, unit_price)
+SELECT so_1.id, chair_product.id, 6, chair_product.unit_price
+FROM so_1, chair_product
+UNION ALL
+SELECT so_1.id, desk_product.id, 1, desk_product.unit_price
+FROM so_1, desk_product
+UNION ALL
+SELECT so_2.id, desk_product.id, 2, desk_product.unit_price
+FROM so_2, desk_product;
+
+DELETE FROM stock_movements sm
+USING companies c
+WHERE sm.company_id = c.id
+  AND c.slug = 'acme-logistics'
+  AND sm.note IN (
+    'Seed chart movement inbound chairs',
+    'Seed chart movement outbound chairs',
+    'Seed chart movement inbound desks',
+    'Seed chart movement outbound desks',
+    'Seed chart movement adjustment chairs'
+  );
+
+WITH acme_company AS (
+  SELECT id
+  FROM companies
+  WHERE slug = 'acme-logistics'
+),
+acme_admin AS (
+  SELECT id
+  FROM users
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND email = 'admin@acme.local'
+),
+acme_location AS (
+  SELECT id
+  FROM locations
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND name = 'Acme Main Warehouse'
+),
+chair_product AS (
+  SELECT id
+  FROM products
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND sku = 'SKU-CHAIR-01'
+),
+desk_product AS (
+  SELECT id
+  FROM products
+  WHERE company_id = (SELECT id FROM acme_company)
+    AND sku = 'SKU-DESK-LOW'
+)
+INSERT INTO stock_movements (company_id, product_id, location_id, movement_type, quantity, note, moved_by, created_at)
+SELECT (SELECT id FROM acme_company), (SELECT id FROM chair_product), (SELECT id FROM acme_location), 'in'::stock_movement_type, 12, 'Seed chart movement inbound chairs', (SELECT id FROM acme_admin), NOW() - INTERVAL '6 days'
+UNION ALL
+SELECT (SELECT id FROM acme_company), (SELECT id FROM chair_product), (SELECT id FROM acme_location), 'out'::stock_movement_type, 4, 'Seed chart movement outbound chairs', (SELECT id FROM acme_admin), NOW() - INTERVAL '5 days'
+UNION ALL
+SELECT (SELECT id FROM acme_company), (SELECT id FROM desk_product), (SELECT id FROM acme_location), 'in'::stock_movement_type, 6, 'Seed chart movement inbound desks', (SELECT id FROM acme_admin), NOW() - INTERVAL '4 days'
+UNION ALL
+SELECT (SELECT id FROM acme_company), (SELECT id FROM desk_product), (SELECT id FROM acme_location), 'out'::stock_movement_type, 2, 'Seed chart movement outbound desks', (SELECT id FROM acme_admin), NOW() - INTERVAL '3 days'
+UNION ALL
+SELECT (SELECT id FROM acme_company), (SELECT id FROM chair_product), (SELECT id FROM acme_location), 'adjustment'::stock_movement_type, 2, 'Seed chart movement adjustment chairs', (SELECT id FROM acme_admin), NOW() - INTERVAL '2 days';

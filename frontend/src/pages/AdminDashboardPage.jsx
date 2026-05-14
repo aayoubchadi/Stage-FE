@@ -161,7 +161,7 @@ export default function AdminDashboardPage() {
         ) : null}
 
         {!isLoading && !errorMessage ? (
-          <StockProDashboardStats />
+          <StockProDashboardStats overview={overview} />
         ) : null}
 
         {!isLoading && !errorMessage && overview ? (

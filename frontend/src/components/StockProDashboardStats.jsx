@@ -1,128 +1,217 @@
-import React, { useState } from 'react';
-import { Badge, BadgeDot } from './ui/badge-2';
+import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader } from './ui/card';
 import { ChartContainer, ChartTooltip } from './ui/line-charts-6';
-import { ArrowDown, ArrowUp, Package, TrendingUp, AlertCircle, DollarSign } from 'lucide-react';
-import { Line, LineChart, XAxis, YAxis } from 'recharts';
+import { Package, TrendingUp, AlertCircle, DollarSign, Building2, Users, Activity, Warehouse } from 'lucide-react';
+import { Line, LineChart, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { cn } from '@/lib/utils';
 
 /**
- * StockPro Inventory Dashboard Stats Component
- * Displays key metrics: Products, Stock Movements, Low Stock Alerts, Inventory Value
+ * StockPro Dashboard Stats Component
+ * Displays real overview metrics and a chart derived from live dashboard data.
  */
 
-// Sample inventory data (7 days of stock movements)
-const inventoryData = [
-  { date: '2024-04-11', products: 24, movements: 8, lowStock: 3, value: 4200 },
-  { date: '2024-04-12', products: 25, movements: 12, lowStock: 2, value: 4850 },
-  { date: '2024-04-13', products: 25, movements: 10, lowStock: 4, value: 4600 },
-  { date: '2024-04-14', products: 26, movements: 15, lowStock: 1, value: 5200 },
-  { date: '2024-04-15', products: 27, movements: 9, lowStock: 3, value: 5800 },
-  { date: '2024-04-16', products: 28, movements: 14, lowStock: 2, value: 6100 },
-  { date: '2024-04-17', products: 28, movements: 18, lowStock: 0, value: 6500 },
-];
+const formatNumber = (value) => new Intl.NumberFormat().format(Number(value) || 0);
 
-// Metric configurations for StockPro
-const metrics = [
-  {
-    key: 'products',
-    label: 'Total Products',
-    value: 28,
-    previousValue: 24,
-    icon: Package,
-    format: (val) => val.toString(),
-  },
-  {
-    key: 'movements',
-    label: 'Movements (Today)',
-    value: 18,
-    previousValue: 12,
-    icon: TrendingUp,
-    format: (val) => val.toString(),
-  },
-  {
-    key: 'lowStock',
-    label: 'Low Stock Alerts',
-    value: 0,
-    previousValue: 3,
-    icon: AlertCircle,
-    format: (val) => val.toString(),
-    isNegative: true, // Lower is better
-  },
-  {
-    key: 'value',
-    label: 'Inventory Value',
-    value: 6500,
-    previousValue: 4200,
-    icon: DollarSign,
-    format: (val) => `$${(val / 1000).toFixed(1)}k`,
-  },
-];
+const formatCurrency = (value, currencyCode = 'EUR') =>
+  new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: currencyCode,
+    maximumFractionDigits: 0,
+  }).format(Number(value) || 0);
 
-// StockPro theme colors
-const chartConfig = {
-  products: {
-    label: 'Products',
-    color: '#3b82f6', // blue-500
-  },
-  movements: {
-    label: 'Movements',
-    color: '#10b981', // emerald-500
-  },
-  lowStock: {
-    label: 'Low Stock',
-    color: '#ef4444', // red-500
-  },
-  value: {
-    label: 'Inventory Value',
-    color: '#f59e0b', // amber-500
-  },
-};
-
-// Custom tooltip matching StockPro theme
-const CustomTooltip = ({ active, payload }) => {
+const CustomTooltip = ({ active, payload, label, scope }) => {
   if (active && payload && payload.length) {
-    const entry = payload[0];
-    const metric = metrics.find((m) => m.key === entry.dataKey);
+    const items = payload.filter((entry) => entry.value !== 0);
 
-    if (metric) {
-      const Icon = metric.icon;
-      return (
-        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-md min-w-[140px]">
-          <div className="flex items-center gap-2 text-sm">
-            <Icon className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-            <span className="text-slate-600 dark:text-slate-400">{metric.label}:</span>
-            <span className="font-semibold text-slate-900 dark:text-slate-100">{metric.format(entry.value)}</span>
-          </div>
+    return (
+      <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-md min-w-[180px]">
+        <div className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">{label}</div>
+        <div className="space-y-1 text-sm">
+          {items.map((entry) => (
+            <div key={entry.dataKey} className="flex items-center justify-between gap-3">
+              <span className="text-slate-600 dark:text-slate-400">{entry.name}</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                {scope === 'platform' && entry.dataKey === 'mrrCents'
+                  ? formatCurrency(entry.value / 100, 'EUR')
+                  : formatNumber(entry.value)}
+              </span>
+            </div>
+          ))}
         </div>
-      );
-    }
+      </div>
+    );
   }
   return null;
 };
 
-export default function StockProDashboardStats() {
-  const [selectedMetric, setSelectedMetric] = useState('movements');
-  
+function buildTenantChartData(overview) {
+  const movements = Array.isArray(overview?.recentMovements) ? overview.recentMovements : [];
+  const grouped = new Map();
+
+  movements.forEach((movement) => {
+    const date = String(movement.createdAt || '').slice(0, 10);
+
+    if (!date) {
+      return;
+    }
+
+    const bucket = grouped.get(date) || {
+      date,
+      inbound: 0,
+      outbound: 0,
+      adjustments: 0,
+    };
+
+    if (movement.movementType === 'in') {
+      bucket.inbound += Number(movement.quantity || 0);
+    } else if (movement.movementType === 'out') {
+      bucket.outbound += Number(movement.quantity || 0);
+    } else {
+      bucket.adjustments += Number(movement.quantity || 0);
+    }
+
+    grouped.set(date, bucket);
+  });
+
+  return Array.from(grouped.values()).sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function buildPlatformChartData(overview) {
+  const companies = Array.isArray(overview?.recentCompanies) ? overview.recentCompanies : [];
+  const grouped = new Map();
+
+  companies.forEach((company) => {
+    const date = String(company.createdAt || '').slice(0, 10);
+
+    if (!date) {
+      return;
+    }
+
+    const bucket = grouped.get(date) || {
+      date,
+      companiesCreated: 0,
+      activeEmployees: 0,
+    };
+
+    bucket.companiesCreated += 1;
+    bucket.activeEmployees += Number(company.activeEmployees || 0);
+
+    grouped.set(date, bucket);
+  });
+
+  return Array.from(grouped.values()).sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function formatChartDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+export default function StockProDashboardStats({ overview }) {
+  const scope = overview?.scope || 'tenant';
+
+  const chartData = useMemo(() => {
+    return scope === 'platform' ? buildPlatformChartData(overview) : buildTenantChartData(overview);
+  }, [overview, scope]);
+
+  const metrics = useMemo(() => {
+    if (scope === 'platform') {
+      return [
+        {
+          key: 'companies',
+          label: 'Total Companies',
+          value: overview?.metrics?.totalCompanies || 0,
+          icon: Building2,
+          format: formatNumber,
+        },
+        {
+          key: 'activeCompanies',
+          label: 'Active Companies',
+          value: overview?.metrics?.activeCompanies || 0,
+          icon: Warehouse,
+          format: formatNumber,
+        },
+        {
+          key: 'users',
+          label: 'Active Users',
+          value: overview?.metrics?.activeUsers || 0,
+          icon: Users,
+          format: formatNumber,
+        },
+        {
+          key: 'mrrCents',
+          label: 'MRR',
+          value: overview?.metrics?.monthlyRecurringRevenueCents || 0,
+          icon: DollarSign,
+          format: (value) => formatCurrency(Number(value) / 100, 'EUR'),
+        },
+      ];
+    }
+
+    return [
+      {
+        key: 'employees',
+        label: 'Active Employees',
+        value: overview?.metrics?.activeEmployees || 0,
+        icon: Users,
+        format: formatNumber,
+      },
+      {
+        key: 'products',
+        label: 'Active Products',
+        value: overview?.metrics?.activeProducts || 0,
+        icon: Package,
+        format: formatNumber,
+      },
+      {
+        key: 'lowStock',
+        label: 'Low Stock Products',
+        value: overview?.metrics?.lowStockProducts || 0,
+        icon: AlertCircle,
+        format: formatNumber,
+      },
+      {
+        key: 'value',
+        label: 'Stock Value',
+        value: overview?.metrics?.stockValue || 0,
+        icon: DollarSign,
+        format: (value) => formatCurrency(value, overview?.plan?.currencyCode || 'EUR'),
+      },
+    ];
+  }, [overview, scope]);
+
+  const chartSeries = scope === 'platform'
+    ? [
+        { key: 'companiesCreated', label: 'Companies created', color: '#3b82f6' },
+        { key: 'activeEmployees', label: 'Active employees in recent companies', color: '#10b981' },
+      ]
+    : [
+        { key: 'inbound', label: 'Inbound', color: '#10b981' },
+        { key: 'outbound', label: 'Outbound', color: '#ef4444' },
+        { key: 'adjustments', label: 'Adjustments', color: '#f59e0b' },
+      ];
+
+  const chartConfig = useMemo(() => {
+    return Object.fromEntries(chartSeries.map((series) => [series.key, { label: series.label, color: series.color }]));
+  }, [chartSeries]);
+
+  if (!overview) {
+    return null;
+  }
 
   return (
     <div className="w-full">
       <Card className="w-full">
         <CardHeader className="p-0 mb-5">
-          {/* Metrics Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 grow">
             {metrics.map((metric) => {
-              const change = ((metric.value - metric.previousValue) / Math.max(metric.previousValue, 1)) * 100;
-              const isPositive = metric.isNegative ? change < 0 : change > 0;
               const Icon = metric.icon;
 
               return (
-                <button
+                <div
                   key={metric.key}
-                  onClick={() => setSelectedMetric(metric.key)}
                   className={cn(
-                    'cursor-pointer flex-1 text-start p-4 last:border-b-0 border-b border-slate-200 dark:border-slate-700 md:border-b md:even:border-e md:dark:even:border-slate-700 lg:border-b-0 lg:border-e lg:dark:border-slate-700 lg:last:border-e-0 transition-all hover:bg-slate-50 dark:hover:bg-slate-800/50',
-                    selectedMetric === metric.key && 'bg-slate-50 dark:bg-slate-800',
+                    'flex-1 text-start p-4 last:border-b-0 border-b border-slate-200 dark:border-slate-700 md:border-b md:even:border-e md:dark:even:border-slate-700 lg:border-b-0 lg:border-e lg:dark:border-slate-700 lg:last:border-e-0 transition-all',
                   )}
                 >
                   <div className="flex items-center justify-between mb-2">
@@ -130,16 +219,11 @@ export default function StockProDashboardStats() {
                       <Icon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                       <span className="text-sm text-slate-600 dark:text-slate-400">{metric.label}</span>
                     </div>
-                    <Badge variant={isPositive ? 'success' : 'destructive'} size="sm">
-                      <BadgeDot />
-                      {Math.abs(change).toFixed(0)}%
-                    </Badge>
                   </div>
-                  <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">{metric.format(metric.value)}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    from {metric.format(metric.previousValue)}
+                  <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                    {metric.format(metric.value)}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -151,7 +235,7 @@ export default function StockProDashboardStats() {
             className="h-80 w-full overflow-visible [&_.recharts-curve.recharts-tooltip-cursor]:stroke-slate-300 dark:[&_.recharts-curve.recharts-tooltip-cursor]:stroke-slate-600"
           >
             <LineChart
-              data={inventoryData}
+              data={chartData}
               margin={{
                 top: 20,
                 right: 20,
@@ -160,16 +244,7 @@ export default function StockProDashboardStats() {
               }}
               style={{ overflow: 'visible' }}
             >
-              {/* Background gradients */}
-              <defs>
-                <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={chartConfig[selectedMetric]?.color} stopOpacity={0.1} />
-                  <stop offset="95%" stopColor={chartConfig[selectedMetric]?.color} stopOpacity={0} />
-                </linearGradient>
-                <filter id="lineShadow">
-                  <feDropShadow dx="2" dy="4" stdDeviation="3" floodOpacity={0.15} />
-                </filter>
-              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.6} />
 
               <XAxis
                 dataKey="date"
@@ -177,10 +252,7 @@ export default function StockProDashboardStats() {
                 tickLine={false}
                 tick={{ fontSize: 11, fill: '#64748b' }}
                 tickMargin={10}
-                tickFormatter={(value) => {
-                  const date = new Date(value);
-                  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                }}
+                tickFormatter={formatChartDate}
               />
 
               <YAxis
@@ -188,37 +260,35 @@ export default function StockProDashboardStats() {
                 tickLine={false}
                 tick={{ fontSize: 11, fill: '#64748b' }}
                 tickMargin={10}
-                tickCount={6}
-                tickFormatter={(value) => {
-                  const metric = metrics.find((m) => m.key === selectedMetric);
-                  return metric ? metric.format(value) : value.toString();
-                }}
               />
 
-              <ChartTooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#cbd5e1' }} />
-
-              <Line
-                type="monotone"
-                dataKey={selectedMetric}
-                stroke={chartConfig[selectedMetric]?.color}
-                strokeWidth={2.5}
-                filter="url(#lineShadow)"
-                dot={false}
-                isAnimationActive={true}
-                activeDot={{
-                  r: 6,
-                  fill: chartConfig[selectedMetric]?.color,
-                  stroke: '#ffffff',
-                  strokeWidth: 2,
-                  filter: 'url(#lineShadow)',
-                }}
+              <ChartTooltip
+                content={<CustomTooltip scope={scope} />}
+                cursor={{ strokeDasharray: '3 3', stroke: '#cbd5e1' }}
+                labelFormatter={formatChartDate}
               />
+
+              {chartSeries.map((series) => (
+                <Line
+                  key={series.key}
+                  type="monotone"
+                  dataKey={series.key}
+                  name={series.label}
+                  stroke={series.color}
+                  strokeWidth={2.5}
+                  dot={false}
+                  isAnimationActive={true}
+                  activeDot={{
+                    r: 6,
+                    fill: series.color,
+                    stroke: '#ffffff',
+                    strokeWidth: 2,
+                  }}
+                />
+              ))}
             </LineChart>
           </ChartContainer>
         </CardContent>
-
-        {/* Forecast summary: top reorder suggestions */}
-        
       </Card>
     </div>
   );

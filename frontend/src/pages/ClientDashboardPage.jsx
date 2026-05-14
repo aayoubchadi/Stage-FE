@@ -102,7 +102,7 @@ export default function ClientDashboardPage() {
         {!isLoading && errorMessage ? <p className="form-message error">{errorMessage}</p> : null}
 
         {!isLoading && !errorMessage ? (
-          <StockProDashboardStats />
+          <StockProDashboardStats overview={overview} />
         ) : null}
 
         {!isLoading && !errorMessage && overview ? (
