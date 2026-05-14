@@ -404,13 +404,14 @@ router.post(
       const userCreateFragments = await buildUserPermissionsInsertFragments();
       const fullName = normalizeValue(request.body.fullName);
       const email = normalizeEmail(request.body.email);
+      const username = normalizeValue(request.body.username);
       const password = normalizeValue(request.body.password);
 
-      if (!fullName || !email || !password) {
+      if (!fullName || !email || !username || !password) {
         throw new HttpError(
           400,
           'COMPANY_VALIDATION_ERROR',
-          'fullName, email, and password are required'
+          'fullName, email, username, and password are required'
         );
       }
 
@@ -419,6 +420,22 @@ router.post(
           400,
           'COMPANY_VALIDATION_ERROR',
           'fullName must be between 2 and 120 characters'
+        );
+      }
+
+      if (username.length < 3 || username.length > 50) {
+        throw new HttpError(
+          400,
+          'COMPANY_VALIDATION_ERROR',
+          'username must be between 3 and 50 characters'
+        );
+      }
+
+      if (!/^[a-zA-Z0-9_\-]+$/.test(username)) {
+        throw new HttpError(
+          400,
+          'COMPANY_VALIDATION_ERROR',
+          'username can only contain letters, numbers, underscores, and hyphens'
         );
       }
 
@@ -440,15 +457,15 @@ router.post(
       const passwordHash = await bcrypt.hash(password, 12);
 
       const userInsertSql = userCreateFragments.insertColumns.includes('permissions')
-        ? `INSERT INTO users (company_id, full_name, email, password_hash, role, permissions)
-           VALUES ($1, $2, $3, $4, 'employee', $5::jsonb)
+        ? `INSERT INTO users (company_id, full_name, email, username, password_hash, role, permissions)
+           VALUES ($1, $2, $3, $4, $5, 'employee', $6::jsonb)
            RETURNING id, company_id, full_name, email::text AS email, role, permissions, is_active, created_at, updated_at`
-        : `INSERT INTO users (company_id, full_name, email, password_hash, role)
-           VALUES ($1, $2, $3, $4, 'employee')
+        : `INSERT INTO users (company_id, full_name, email, username, password_hash, role)
+           VALUES ($1, $2, $3, $4, $5, 'employee')
            RETURNING id, company_id, full_name, email::text AS email, role, '{}'::jsonb AS permissions, is_active, created_at, updated_at`;
       const userInsertParams = userCreateFragments.insertColumns.includes('permissions')
-        ? [request.tenantContext.company.id, fullName, email, passwordHash, '{}']
-        : [request.tenantContext.company.id, fullName, email, passwordHash];
+        ? [request.tenantContext.company.id, fullName, email, username, passwordHash, '{}']
+        : [request.tenantContext.company.id, fullName, email, username, passwordHash];
 
       const { rows } = await runWithCompanyScope(
         request.tenantContext.company.id,
@@ -467,6 +484,17 @@ router.post(
             409,
             'COMPANY_EMPLOYEE_EMAIL_EXISTS',
             'A user with this email already exists in your company'
+          )
+        );
+        return;
+      }
+
+      if (error?.code === '23505' && error.constraint === 'uq_users_company_username') {
+        next(
+          new HttpError(
+            409,
+            'COMPANY_EMPLOYEE_USERNAME_EXISTS',
+            'A user with this username already exists in your company'
           )
         );
         return;

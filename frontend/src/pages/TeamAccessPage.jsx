@@ -60,6 +60,7 @@ const EMPTY_PERMISSIONS = buildPermissionMapFromList([]);
 const DEFAULT_FORM = {
   fullName: '',
   email: '',
+  username: '',
   password: '',
   presetKey: '',
   permissions: EMPTY_PERMISSIONS,
@@ -195,6 +196,7 @@ export default function TeamAccessPage() {
     setForm({
       fullName: employee.fullName || '',
       email: employee.email || '',
+      username: '',
       password: '',
       presetKey: '',
       permissions: buildPermissionMapFromList(employee.permissionList || []),
@@ -224,6 +226,7 @@ export default function TeamAccessPage() {
         accessToken,
         fullName: form.fullName,
         email: form.email,
+        username: form.username,
         password: form.password,
         presetKey: form.presetKey || undefined,
         permissions: form.permissions,
@@ -407,6 +410,16 @@ export default function TeamAccessPage() {
                       value={form.email}
                       onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
                       placeholder="john@company.com"
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="username">Username</Label>
+                    <Input
+                      id="username"
+                      value={form.username}
+                      onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
+                      placeholder="john_doe"
                       required
                     />
                   </div>

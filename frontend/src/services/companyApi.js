@@ -146,6 +146,7 @@ export async function createCompanyEmployee({
   accessToken,
   fullName,
   email,
+  username,
   password,
   presetKey,
   permissions,
@@ -156,6 +157,7 @@ export async function createCompanyEmployee({
     body: JSON.stringify({
       fullName,
       email,
+      username,
       password,
       presetKey,
       permissions,
