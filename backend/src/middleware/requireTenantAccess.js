@@ -21,6 +21,23 @@ export async function requireTenantAccess(request, _response, next) {
     });
 
     request.tenantContext = tenantContext;
+    request.tenant = {
+      companyId: tenantContext.company.id,
+      company: tenantContext.company,
+      plan: tenantContext.plan,
+      metrics: tenantContext.metrics,
+      user: tenantContext.user,
+    };
+    request.user = {
+      id: tenantContext.user.id,
+      companyId: tenantContext.user.companyId,
+      fullName: tenantContext.user.fullName,
+      email: tenantContext.user.email,
+      role: tenantContext.user.role,
+      permissions: tenantContext.user.permissions,
+      effectivePermissions: tenantContext.user.effectivePermissions,
+      effectivePermissionList: tenantContext.user.effectivePermissionList,
+    };
     next();
   } catch (error) {
     next(error);
