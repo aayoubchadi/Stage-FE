@@ -1,0 +1,7 @@
+{
+  "watch": ["src"],
+  "ext": "js",
+  "ignore": ["node_modules", "*.test.js"],
+  "delay": 500,
+  "exitcrash": true
+}
