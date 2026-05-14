@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/requireAuth.js';
 import { requireTenantAccess } from '../middleware/requireTenantAccess.js';
 import db from '../lib/db.js';
 import HttpError from '../lib/httpError.js';
+import { runWithCompanyScope } from '../lib/tenantContext.js';
 
 const router = Router();
 
@@ -76,11 +77,7 @@ router.post('/move', async (req, res, next) => {
       throw new HttpError(400, 'invalid_movement_type', 'Type must be in, out, or adjustment.');
     }
 
-    // Begin transaction
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
-
+    const movement = await runWithCompanyScope(companyId, async (client) => {
       // Lock product for update
       const productRes = await client.query(
         `SELECT quantity_in_stock FROM products WHERE id = $1 AND company_id = $2 FOR UPDATE`,
@@ -135,14 +132,10 @@ router.post('/move', async (req, res, next) => {
         [companyId, product_id, location_id, movement_type, movement_type === 'adjustment' ? Math.abs(qtyDelta) : quantity, note, userId]
       );
 
-      await client.query('COMMIT');
-      res.status(201).json({ movement: movementRes.rows[0] });
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+      return movementRes.rows[0];
+    });
+
+    res.status(201).json({ movement });
   } catch (error) {
     next(error);
   }
