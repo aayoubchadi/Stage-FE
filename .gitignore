@@ -27,3 +27,8 @@ accounts.txt
 # Local backups (do not commit)
 frontend-backup-*/
 frontend/backup-*/
+
+.svg
+.png
+.jpg
+.tex
