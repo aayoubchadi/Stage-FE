@@ -87,8 +87,10 @@ export const isAdminRole = (role) =>
 
 export const isPlatformRole = (role) => role === 'platform_admin';
 
-export const getRoleFromSession = (session) =>
-  session?.role || session?.user?.role || 'employee';
+export const getRoleFromSession = (session) => {
+  const role = session?.role || session?.user?.role || 'employee';
+  return role === 'admin' ? 'company_admin' : role;
+};
 
 export const getPermissionsFromSession = (session) => {
   const role = getRoleFromSession(session);
@@ -132,6 +134,15 @@ export const getWorkspaceMenuForSession = (session) => {
 
   if (role === 'company_admin' || permissionMap['inventory.view']) {
     links.push({ key: 'inventory', label: 'Inventory', labelKey: 'header.workspace.inventory', path: '/inventory' });
+  }
+
+  if (role === 'company_admin' || permissionMap['receipts.create']) {
+    links.push({
+      key: 'purchaseReceipts',
+      label: 'Purchase Receipts',
+      labelKey: 'header.workspace.purchaseReceipts',
+      path: '/purchase-receipts',
+    });
   }
 
   if (

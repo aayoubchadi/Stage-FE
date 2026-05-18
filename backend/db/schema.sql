@@ -28,8 +28,9 @@ BEGIN
     -- Current roles:
     -- - company_admin: manages only data inside their company/tenant
     -- - employee: standard company account under subscription limits
+    -- - special_employee: elevated employee with receipt creation access
     -- Platform-wide admin role is intentionally not included in this phase.
-    CREATE TYPE account_role AS ENUM ('company_admin', 'employee');
+    CREATE TYPE account_role AS ENUM ('company_admin', 'employee', 'special_employee');
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'stock_movement_type') THEN
@@ -54,6 +55,16 @@ BEGIN
        WHERE t.typname = 'account_role' AND e.enumlabel = 'employee'
      ) THEN
     ALTER TYPE account_role ADD VALUE 'employee';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'account_role')
+     AND NOT EXISTS (
+       SELECT 1
+       FROM pg_enum e
+       JOIN pg_type t ON t.oid = e.enumtypid
+       WHERE t.typname = 'account_role' AND e.enumlabel = 'special_employee'
+     ) THEN
+    ALTER TYPE account_role ADD VALUE 'special_employee';
   END IF;
 END
 $$;
@@ -190,9 +201,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_company_join_pending_email
   ON company_join_requests(company_id, email)
   WHERE status = 'pending';
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_users_one_active_admin_per_company
-  ON users(company_id)
-  WHERE role = 'company_admin' AND is_active = TRUE;
+DROP INDEX IF EXISTS uq_users_one_active_admin_per_company;
 
 -- Auth session and token storage.
 CREATE TABLE IF NOT EXISTS auth_sessions (
@@ -391,9 +400,7 @@ BEGIN
     END IF;
 
     DROP INDEX IF EXISTS uq_users_one_admin_per_company;
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_users_one_active_admin_per_company
-      ON public.users(company_id)
-      WHERE role = 'company_admin' AND is_active = TRUE;
+    DROP INDEX IF EXISTS uq_users_one_active_admin_per_company;
   END IF;
 
   IF to_regclass('public.platform_admins') IS NOT NULL THEN
@@ -586,7 +593,7 @@ DECLARE
   plan_limit INTEGER;
   current_count INTEGER;
 BEGIN
-  IF NEW.role = 'employee' AND NEW.is_active = TRUE THEN
+  IF NEW.role IN ('employee', 'special_employee') AND NEW.is_active = TRUE THEN
     SELECT sp.max_employees
       INTO plan_limit
       FROM companies c
@@ -601,7 +608,7 @@ BEGIN
       INTO current_count
      FROM users u
      WHERE u.company_id = NEW.company_id
-       AND u.role = 'employee'
+      AND u.role IN ('employee', 'special_employee')
        AND u.is_active = TRUE
        AND (TG_OP = 'INSERT' OR u.id <> NEW.id);
 

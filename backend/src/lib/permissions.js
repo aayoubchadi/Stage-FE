@@ -4,6 +4,7 @@ export const PERMISSION_KEYS = Object.freeze([
   'inventory.view',
   'inventory.manage',
   'stock.move',
+  'receipts.create',
   'data.import',
   'data.export',
   'reports.view',
@@ -30,6 +31,11 @@ export const PERMISSION_PRESETS = Object.freeze({
     key: 'reporting_viewer',
     label: 'Reporting Viewer',
     permissions: ['reports.view', 'inventory.view'],
+  },
+  receipt_clerk: {
+    key: 'receipt_clerk',
+    label: 'Receipt Clerk',
+    permissions: ['receipts.create'],
   },
 });
 
@@ -68,8 +74,18 @@ export function getAdminPermissionMap() {
 }
 
 export function resolveEffectivePermissions(role, userPermissions) {
-  if (role === 'company_admin') {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+
+  if (normalizedRole === 'company_admin' || normalizedRole === 'admin') {
     return getAdminPermissionMap();
+  }
+
+  if (normalizedRole === 'special_employee') {
+    const normalized = normalizePermissions(userPermissions);
+    return {
+      ...normalized,
+      'receipts.create': true,
+    };
   }
 
   return normalizePermissions(userPermissions);

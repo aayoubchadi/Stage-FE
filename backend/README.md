@@ -27,12 +27,13 @@ This backend uses PostgreSQL.
 
 Current DB role model in this phase:
 
-- `company_admin`: at most one active admin per company with access to that company only
+- `company_admin`: tenant admin accounts with full access (multiple allowed)
 - `employee`: standard company account under subscription limits
 - `platform master admin`: global account for platform-level administration
 
 Seeded platform master admin (development):
 
+- Username: `stockpro_admin`
 - Email: `stockpro@admin.com`
 - Password: `StockPro@Admin2026`
 
@@ -132,7 +133,7 @@ Then request `GET /health`. The response includes database status when connectio
 - `GET /api/v1/auth/me` verifies bearer access token and returns auth claims.
 - `GET /api/v1/company/context` returns tenant role, effective permissions, plan features, and employee capacity.
 - `GET /api/v1/company/employees` lists tenant employees.
-- `POST /api/v1/company/employees` creates an employee with admin-selected privileges.
+- `POST /api/v1/company/employees` creates an employee or admin with admin-selected privileges.
 - `PATCH /api/v1/company/employees/:employeeId` updates employee profile/privileges.
 - `PATCH /api/v1/company/employees/:employeeId/status` activates/deactivates employee.
 - `GET /api/v1/company/products` lists company products.

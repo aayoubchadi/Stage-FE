@@ -14,6 +14,7 @@ import ContactUsPage from './pages/ContactUsPage';
 import TeamAccessPage from './pages/TeamAccessPage';
 import InventoryPage from './pages/InventoryPage';
 import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
+import PurchaseReceiptsPage from './pages/PurchaseReceiptsPage';
 import SalesOrdersPage from './pages/SalesOrdersPage';
 import ReportsPage from './pages/ReportsPage';
 import DataExchangePage from './pages/DataExchangePage';
@@ -112,6 +113,14 @@ function App() {
             element={(
               <RequireWorkspaceAccess>
                 <PurchaseOrdersPage />
+              </RequireWorkspaceAccess>
+            )}
+          />
+          <Route
+            path="/purchase-receipts"
+            element={(
+              <RequireWorkspaceAccess requiredAnyPermissions={['receipts.create']}>
+                <PurchaseReceiptsPage />
               </RequireWorkspaceAccess>
             )}
           />

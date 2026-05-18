@@ -28,6 +28,7 @@ POST /auth/register
 Content-Type: application/json
 
 {
+  "username": "john_doe",
   "email": "user@company.com",
   "password": "SecurePass123!",
   "fullName": "John Doe"

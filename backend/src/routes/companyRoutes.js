@@ -26,6 +26,10 @@ function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function normalizeRole(value) {
+  return String(value || 'employee').trim().toLowerCase();
+}
+
 function toNumber(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -62,6 +66,17 @@ function resolveEmployeePermissions({ presetKey, permissions }) {
   }
 
   return applyPermissionPreset(normalizedPresetKey, normalizedPermissions);
+}
+
+function ensureSpecialEmployeePermissions(role, permissionMap) {
+  if (normalizeRole(role) !== 'special_employee') {
+    return permissionMap;
+  }
+
+  return {
+    ...permissionMap,
+    'receipts.create': true,
+  };
 }
 
 function serializeEmployeeRow(row) {
@@ -378,7 +393,6 @@ router.get(
                updated_at
              FROM users
              WHERE company_id = $1
-               AND role = 'employee'
              ORDER BY created_at DESC`,
             [request.tenantContext.company.id]
           )
@@ -406,12 +420,21 @@ router.post(
       const email = normalizeEmail(request.body.email);
       const username = normalizeValue(request.body.username);
       const password = normalizeValue(request.body.password);
+      const role = normalizeRole(request.body.role);
 
       if (!fullName || !email || !username || !password) {
         throw new HttpError(
           400,
           'COMPANY_VALIDATION_ERROR',
           'fullName, email, username, and password are required'
+        );
+      }
+
+      if (role !== 'employee' && role !== 'company_admin' && role !== 'special_employee') {
+        throw new HttpError(
+          400,
+          'COMPANY_VALIDATION_ERROR',
+          'role must be employee, special_employee, or company_admin'
         );
       }
 
@@ -449,23 +472,28 @@ router.post(
         );
       }
 
-      const permissions = resolveEmployeePermissions({
-        presetKey: request.body.presetKey,
-        permissions: request.body.permissions,
-      });
+      const permissions = role === 'company_admin'
+        ? {}
+        : ensureSpecialEmployeePermissions(
+          role,
+          resolveEmployeePermissions({
+            presetKey: request.body.presetKey,
+            permissions: request.body.permissions,
+          })
+        );
 
       const passwordHash = await bcrypt.hash(password, 12);
 
       const userInsertSql = userCreateFragments.insertColumns.includes('permissions')
         ? `INSERT INTO users (company_id, full_name, email, username, password_hash, role, permissions)
-           VALUES ($1, $2, $3, $4, $5, 'employee', $6::jsonb)
-           RETURNING id, company_id, full_name, email::text AS email, role, permissions, is_active, created_at, updated_at`
+          VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+          RETURNING id, company_id, full_name, email::text AS email, role, permissions, is_active, created_at, updated_at`
         : `INSERT INTO users (company_id, full_name, email, username, password_hash, role)
-           VALUES ($1, $2, $3, $4, $5, 'employee')
-           RETURNING id, company_id, full_name, email::text AS email, role, '{}'::jsonb AS permissions, is_active, created_at, updated_at`;
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING id, company_id, full_name, email::text AS email, role, '{}'::jsonb AS permissions, is_active, created_at, updated_at`;
       const userInsertParams = userCreateFragments.insertColumns.includes('permissions')
-        ? [request.tenantContext.company.id, fullName, email, username, passwordHash, '{}']
-        : [request.tenantContext.company.id, fullName, email, username, passwordHash];
+        ? [request.tenantContext.company.id, fullName, email, username, passwordHash, role, JSON.stringify(permissions)]
+        : [request.tenantContext.company.id, fullName, email, username, passwordHash, role];
 
       const { rows } = await runWithCompanyScope(
         request.tenantContext.company.id,
@@ -478,23 +506,41 @@ router.post(
         },
       });
     } catch (error) {
-      if (error?.code === '23505' && error.constraint === 'uq_users_company_email') {
-        next(
-          new HttpError(
-            409,
-            'COMPANY_EMPLOYEE_EMAIL_EXISTS',
-            'A user with this email already exists in your company'
-          )
-        );
-        return;
-      }
+      if (error?.code === '23505') {
+        const constraint = String(error.constraint || '');
+        const detail = String(error.detail || '');
+        const emailConflict =
+          constraint.includes('email') || detail.includes('(company_id, email)');
+        const usernameConflict =
+          constraint.includes('username') || detail.includes('(company_id, username)');
 
-      if (error?.code === '23505' && error.constraint === 'uq_users_company_username') {
+        if (emailConflict) {
+          next(
+            new HttpError(
+              409,
+              'COMPANY_EMPLOYEE_EMAIL_EXISTS',
+              'A user with this email already exists in your company'
+            )
+          );
+          return;
+        }
+
+        if (usernameConflict) {
+          next(
+            new HttpError(
+              409,
+              'COMPANY_EMPLOYEE_USERNAME_EXISTS',
+              'A user with this username already exists in your company'
+            )
+          );
+          return;
+        }
+
         next(
           new HttpError(
             409,
-            'COMPANY_EMPLOYEE_USERNAME_EXISTS',
-            'A user with this username already exists in your company'
+            'COMPANY_EMPLOYEE_CONFLICT',
+            'A user with this email or username already exists in your company'
           )
         );
         return;
@@ -564,11 +610,11 @@ router.patch(
         async (client) => {
           const userPermissionsSelect = await buildUserPermissionsSelect('users', 'permissions');
           const { rows: employeeRows } = await client.query(
-            `SELECT id, full_name, ${userPermissionsSelect}
+            `SELECT id, full_name, role, ${userPermissionsSelect}
              FROM users
              WHERE id = $1
                AND company_id = $2
-               AND role = 'employee'
+               AND role IN ('employee', 'special_employee', 'company_admin')
              LIMIT 1`,
             [employeeId, request.tenantContext.company.id]
           );
@@ -582,12 +628,18 @@ router.patch(
             existing,
             'permissions'
           );
-          const mergedPermissions = hasPermissionUpdate
-            ? resolveEmployeePermissions({
-              presetKey: request.body.presetKey,
-              permissions: request.body.permissions,
-            })
-            : normalizePermissions(existing.permissions || {});
+          const ignorePermissions = existing.role === 'company_admin';
+          const mergedPermissions = ignorePermissions
+            ? {}
+            : hasPermissionUpdate
+              ? resolveEmployeePermissions({
+                presetKey: request.body.presetKey,
+                permissions: request.body.permissions,
+              })
+              : normalizePermissions(existing.permissions || {});
+          const nextPermissions = ignorePermissions
+            ? {}
+            : ensureSpecialEmployeePermissions(existing.role, mergedPermissions);
 
           const updateSql = userHasPermissionsColumn
             ? `UPDATE users
@@ -596,14 +648,14 @@ router.patch(
                  permissions = $4::jsonb
                WHERE id = $1
                  AND company_id = $2
-                 AND role = 'employee'
+                 AND role IN ('employee', 'special_employee', 'company_admin')
                RETURNING id, company_id, full_name, email::text AS email, role, permissions, is_active, created_at, updated_at`
             : `UPDATE users
                SET
                  full_name = $3
                WHERE id = $1
                  AND company_id = $2
-                 AND role = 'employee'
+                 AND role IN ('employee', 'special_employee', 'company_admin')
                RETURNING id, company_id, full_name, email::text AS email, role, '{}'::jsonb AS permissions, is_active, created_at, updated_at`;
 
           const updateParams = userHasPermissionsColumn
@@ -611,7 +663,7 @@ router.patch(
               employeeId,
               request.tenantContext.company.id,
               hasNameUpdate ? nextFullName : existing.full_name,
-              JSON.stringify(mergedPermissions),
+              JSON.stringify(nextPermissions),
             ]
             : [
               employeeId,
@@ -666,7 +718,7 @@ router.patch(
              SET is_active = $3
              WHERE id = $1
                AND company_id = $2
-               AND role = 'employee'
+               AND role IN ('employee', 'special_employee', 'company_admin')
              RETURNING id, company_id, full_name, email::text AS email, role, permissions, is_active, created_at, updated_at`,
             [employeeId, request.tenantContext.company.id, isActive]
           )

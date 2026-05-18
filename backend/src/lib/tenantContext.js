@@ -105,8 +105,8 @@ export async function loadTenantContext({ companyId, userId }) {
 
     const { rows: metricRows } = await client.query(
       `SELECT
-         COUNT(*) FILTER (WHERE role = 'employee' AND is_active = TRUE) AS active_employees,
-         COUNT(*) FILTER (WHERE role = 'employee') AS total_employees
+         COUNT(*) FILTER (WHERE role IN ('employee', 'special_employee') AND is_active = TRUE) AS active_employees,
+         COUNT(*) FILTER (WHERE role IN ('employee', 'special_employee')) AS total_employees
        FROM users
        WHERE company_id = $1`,
       [companyId]
@@ -164,7 +164,20 @@ export function assertPermission(tenantContext, permissionKey) {
     throw new HttpError(500, 'PERMISSION_UNKNOWN', `Unknown permission key: ${permissionKey}`);
   }
 
+  const normalizedRole = String(tenantContext?.user?.role || '').trim().toLowerCase();
+  if (normalizedRole === 'company_admin' || normalizedRole === 'admin') {
+    return;
+  }
+
   if (!tenantContext?.user?.effectivePermissions?.[permissionKey]) {
+    if (permissionKey === 'employees.manage') {
+      throw new HttpError(
+        403,
+        'PERMISSION_DENIED',
+        'Company admin access is required to manage team members.'
+      );
+    }
+
     throw new HttpError(
       403,
       'PERMISSION_DENIED',

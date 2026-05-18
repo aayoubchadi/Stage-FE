@@ -13,9 +13,9 @@ Supported principals:
 - Platform admin (`platform_admins` table)
 
 Identity rules:
-- Email lookup is case-insensitive.
+- Username lookup is case-insensitive for login.
 - Disabled account (`is_active = FALSE`) cannot login.
-- Auth endpoints do not expose whether an email exists.
+- Auth endpoints do not expose whether a username exists.
 
 ## 2. Base path and content type
 
@@ -30,7 +30,7 @@ All non-2xx responses follow this shape:
 {
   "error": {
     "code": "AUTH_INVALID_CREDENTIALS",
-    "message": "Invalid email or password",
+    "message": "Invalid username or password",
     "details": []
   }
 }
@@ -89,6 +89,7 @@ Request body:
 {
   "companyId": "uuid",
   "fullName": "Jane Doe",
+  "username": "jane_doe",
   "email": "jane@acme.com",
   "password": "StrongPass!2026",
   "role": "employee"
@@ -98,10 +99,11 @@ Request body:
 Request rules:
 - `companyId`: required UUID for tenant company.
 - `fullName`: required, trimmed, 2-120 chars.
+- `username`: required, trimmed, stored as provided.
 - `email`: required, valid format, lowercased before persist.
 - `password`: must pass policy in section 4.
 - `role`: optional, defaults to `employee`; values allowed: `company_admin`, `employee`.
-- If `role=company_admin`, enforce one active admin per company.
+- If `role=company_admin`, create an admin with full tenant access.
 
 Success response:
 - `201 Created`
@@ -125,7 +127,6 @@ Success response:
 Failure cases:
 - `400` with `AUTH_VALIDATION_ERROR`
 - `409` with `AUTH_VALIDATION_ERROR` for duplicate email in company
-- `409` with `AUTH_VALIDATION_ERROR` for second active company admin
 
 ## 6. Endpoint: Login
 
@@ -136,16 +137,16 @@ Request body:
 
 ```json
 {
-  "email": "jane@acme.com",
+  "username": "jane_doe",
   "password": "StrongPass!2026",
   "accountScope": "tenant"
 }
 ```
 
 Request rules:
-- `email`: required.
+- `username`: required.
 - `password`: required.
-- `accountScope`: required; values: `tenant`, `platform`.
+- `accountScope`: optional; values: `tenant`, `platform`.
 
 Success response:
 - `200 OK`

@@ -836,7 +836,7 @@ router.post('/login', loginRateLimiter, async (request, response, next) => {
           throw new HttpError(
             401,
             'AUTH_INVALID_CREDENTIALS',
-            'Invalid email or password'
+            'Invalid username or password'
           );
         }
 
@@ -962,7 +962,7 @@ router.post('/login', loginRateLimiter, async (request, response, next) => {
         throw new HttpError(
           401,
           'AUTH_INVALID_CREDENTIALS',
-          'Invalid email or password'
+          'Invalid username or password'
         );
       }
 
@@ -1001,7 +1001,7 @@ router.post('/login', loginRateLimiter, async (request, response, next) => {
       return;
     }
 
-    throw new HttpError(401, 'AUTH_INVALID_CREDENTIALS', 'Invalid email or password');
+    throw new HttpError(401, 'AUTH_INVALID_CREDENTIALS', 'Invalid username or password');
   } catch (error) {
     await logAuthEvent({
       eventType: 'login',

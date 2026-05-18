@@ -16,6 +16,11 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString();
 }
 
+function formatDisplayRole(role) {
+  const normalizedRole = String(role || '').toLowerCase();
+  return normalizedRole === 'employee' ? 'employee' : 'admin';
+}
+
 export default function ClientDashboardPage() {
   const { t } = useLanguage();
   const [session, setSession] = useState(null);
@@ -76,8 +81,7 @@ export default function ClientDashboardPage() {
   }, [navigate]);
 
   const userName = session?.fullName || session?.user?.fullName || 'Employee';
-  const userEmail = session?.email || session?.user?.email || '-';
-  const userRole = session?.role || session?.user?.role || 'employee';
+  const userRole = formatDisplayRole(session?.role || session?.user?.role || 'employee');
   const metrics = overview?.metrics || {};
 
   return (
@@ -89,11 +93,11 @@ export default function ClientDashboardPage() {
           <p className="eyebrow">{t('dashboard.client.eyebrow')}</p>
           <h1>{t('dashboard.common.greeting')} <span>{userName}</span></h1>
           <p>
-            {t('dashboard.common.account')}: <strong>{userEmail}</strong> | {t('dashboard.common.role')}: <strong>{userRole}</strong>
+            {t('dashboard.common.role')}: <strong>{userRole}</strong>
           </p>
           {overview?.company ? (
             <p>
-              Company: <strong>{overview.company.name}</strong> ({overview.company.slug})
+              Company: <strong>{overview.company.name}</strong>
             </p>
           ) : null}
         </section>

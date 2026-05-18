@@ -24,6 +24,11 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString();
 }
 
+function formatDisplayRole(role) {
+  const normalizedRole = String(role || '').toLowerCase();
+  return normalizedRole === 'employee' ? 'employee' : 'admin';
+}
+
 export default function AdminDashboardPage() {
   const { t } = useLanguage();
   const [session, setSession] = useState(null);
@@ -36,8 +41,10 @@ export default function AdminDashboardPage() {
   const navigate = useNavigate();
 
   const userDisplayName = useMemo(() => session?.fullName || session?.user?.fullName || 'Admin', [session]);
-  const userEmail = useMemo(() => session?.email || session?.user?.email || '-', [session]);
-  const userRole = useMemo(() => session?.role || session?.user?.role || 'company_admin', [session]);
+  const userRole = useMemo(
+    () => formatDisplayRole(session?.role || session?.user?.role || 'company_admin'),
+    [session]
+  );
 
   useEffect(() => {
     const activeSession = getSession();
@@ -145,11 +152,11 @@ export default function AdminDashboardPage() {
           <p className="eyebrow">{t('dashboard.admin.eyebrow')}</p>
           <h1>{t('dashboard.common.greeting')} <span>{userDisplayName}</span></h1>
           <p>
-            {t('dashboard.common.account')}: <strong>{userEmail}</strong> | {t('dashboard.common.role')}: <strong>{userRole}</strong>
+            {t('dashboard.common.role')}: <strong>{userRole}</strong>
           </p>
           {overview?.scope === 'tenant' && overview?.company ? (
             <p>
-              Company: <strong>{overview.company.name}</strong> ({overview.company.slug})
+              Company: <strong>{overview.company.name}</strong>
             </p>
           ) : null}
         </section>

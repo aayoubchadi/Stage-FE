@@ -76,12 +76,13 @@ The backend expects a PostgreSQL database named `stockpro_db`.
 
 Current DB role model in this phase:
 
-- `company_admin`: at most one active admin per company (tenant-scoped)
+- `company_admin`: tenant admin accounts with full access (multiple allowed)
 - `employee`: company user under subscription employee limits
 - `platform master admin`: global account for the platform team (outside tenant users)
 
 Seeded platform master admin (development):
 
+- Username: `stockpro_admin`
 - Email: `stockpro@admin.com`
 - Password: `StockPro@Admin2026`
 

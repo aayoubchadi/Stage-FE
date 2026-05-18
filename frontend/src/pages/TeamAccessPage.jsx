@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar, Check, Edit2, Plus, Search, Shield, Users } from 'lucide-react';
 import Header from '../components/Header';
 import PageBackground from '../components/PageBackground';
@@ -53,6 +53,10 @@ const PERMISSION_DETAILS = {
     label: 'Reports View',
     description: 'Access reporting views and dashboards',
   },
+  'receipts.create': {
+    label: 'Purchase Receipts',
+    description: 'Create purchase receipts and export PDFs',
+  },
 };
 
 const EMPTY_PERMISSIONS = buildPermissionMapFromList([]);
@@ -62,9 +66,22 @@ const DEFAULT_FORM = {
   email: '',
   username: '',
   password: '',
+  role: 'employee',
   presetKey: '',
   permissions: EMPTY_PERMISSIONS,
 };
+
+function formatRoleLabel(role) {
+  if (role === 'company_admin') {
+    return 'Admin';
+  }
+
+  if (role === 'special_employee') {
+    return 'Special Employee';
+  }
+
+  return 'Employee';
+}
 
 function titleizePermission(permission) {
   return PERMISSION_DETAILS[permission]?.label || permission.replace(/\./g, ' ');
@@ -109,6 +126,7 @@ export default function TeamAccessPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [form, setForm] = useState(DEFAULT_FORM);
+  const toastTimerRef = useRef(null);
 
   const accessToken = session?.accessToken;
 
@@ -145,6 +163,28 @@ export default function TeamAccessPage() {
   useEffect(() => {
     loadData();
   }, [accessToken]);
+
+  useEffect(() => {
+    if (!message) {
+      return undefined;
+    }
+
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+
+    toastTimerRef.current = window.setTimeout(() => {
+      setMessage('');
+      setMessageType('');
+    }, 5000);
+
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+    };
+  }, [message]);
 
   const capacityLabel = useMemo(() => {
     const active = context?.capacity?.activeEmployees || 0;
@@ -198,6 +238,7 @@ export default function TeamAccessPage() {
       email: employee.email || '',
       username: '',
       password: '',
+      role: employee.role || 'employee',
       presetKey: '',
       permissions: buildPermissionMapFromList(employee.permissionList || []),
     });
@@ -228,6 +269,7 @@ export default function TeamAccessPage() {
         email: form.email,
         username: form.username,
         password: form.password,
+        role: form.role,
         presetKey: form.presetKey || undefined,
         permissions: form.permissions,
       });
@@ -322,7 +364,15 @@ export default function TeamAccessPage() {
         </section>
 
         {isLoading ? <p className="dashboard-state">Loading team data...</p> : null}
-        {!isLoading && message ? <p className={`form-message ${messageType}`}>{message}</p> : null}
+        {message ? (
+          <div
+            className={`toast-notification form-message ${messageType}`}
+            role={messageType === 'error' ? 'alert' : 'status'}
+            aria-live={messageType === 'error' ? 'assertive' : 'polite'}
+          >
+            {message}
+          </div>
+        ) : null}
 
         {!isLoading ? (
           <section className="space-y-6">
@@ -379,7 +429,7 @@ export default function TeamAccessPage() {
                   <SelectItem value="inactive">Inactive</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={openAddDialog} className="!w-full !bg-blue-600 !text-white !hover:bg-blue-700 sm:!w-auto">
+              <Button onClick={openAddDialog} className="team-add-button w-full sm:w-auto">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Employee
               </Button>
@@ -436,6 +486,33 @@ export default function TeamAccessPage() {
                   </div>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="grid gap-2">
+                      <Label htmlFor="role">Role</Label>
+                      <Select
+                        value={form.role}
+                        onValueChange={(value) =>
+                          setForm((current) => ({
+                            ...current,
+                            role: value,
+                            permissions: value === 'special_employee'
+                              ? {
+                                ...current.permissions,
+                                'receipts.create': true,
+                              }
+                              : current.permissions,
+                          }))
+                        }
+                      >
+                        <SelectTrigger id="role">
+                          <SelectValue placeholder="Select role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="employee">Employee</SelectItem>
+                          <SelectItem value="special_employee">Special Employee</SelectItem>
+                          <SelectItem value="company_admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
                       <Label htmlFor="presetKey">Preset</Label>
                       <Select
                         value={form.presetKey}
@@ -465,31 +542,35 @@ export default function TeamAccessPage() {
                       <p className="text-xs text-muted-foreground">These are the backend permission keys used by the app.</p>
                     </div>
                   </div>
-                  <div className="grid gap-3 rounded-lg border p-4">
-                    {PERMISSION_KEYS.map((permission) => (
-                      <div key={permission} className="flex items-start space-x-3">
-                        <Checkbox
-                          id={permission}
-                          checked={Boolean(form.permissions[permission])}
-                          onCheckedChange={(checked) =>
-                            setForm((current) => ({
-                              ...current,
-                              permissions: {
-                                ...current.permissions,
-                                [permission]: Boolean(checked),
-                              },
-                            }))
-                          }
-                        />
-                        <div className="grid gap-1">
-                          <Label htmlFor={permission} className="cursor-pointer font-medium">
-                            {titleizePermission(permission)}
-                          </Label>
-                          <p className="text-sm text-muted-foreground">{permissionDescription(permission)}</p>
+                  {form.role === 'company_admin' ? (
+                    <p className="text-sm text-muted-foreground">Admins automatically have full access. Permissions are optional.</p>
+                  ) : (
+                    <div className="grid gap-3 rounded-lg border p-4">
+                      {PERMISSION_KEYS.map((permission) => (
+                        <div key={permission} className="flex items-start space-x-3">
+                          <Checkbox
+                            id={permission}
+                            checked={Boolean(form.permissions[permission])}
+                            onCheckedChange={(checked) =>
+                              setForm((current) => ({
+                                ...current,
+                                permissions: {
+                                  ...current.permissions,
+                                  [permission]: Boolean(checked),
+                                },
+                              }))
+                            }
+                          />
+                          <div className="grid gap-1">
+                            <Label htmlFor={permission} className="cursor-pointer font-medium">
+                              {titleizePermission(permission)}
+                            </Label>
+                            <p className="text-sm text-muted-foreground">{permissionDescription(permission)}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex justify-end gap-2">
                     <Button variant="outline" type="button" onClick={closeAddDialog} className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
                       Cancel
@@ -614,6 +695,7 @@ export default function TeamAccessPage() {
                             <div>
                               <p className="font-medium">{employee.fullName}</p>
                               <p className="text-sm text-muted-foreground">{employee.email}</p>
+                              <p className="text-xs text-muted-foreground">Role: {formatRoleLabel(employee.role)}</p>
                             </div>
                           </TableCell>
                           <TableCell>

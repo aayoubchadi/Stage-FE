@@ -2,15 +2,16 @@
 -- Run with:
 --   PGPASSWORD="<postgres_password>" "C:\\Path_To_Your_PostGreSQL\\bin\\psql.exe" -U postgres -h localhost -p 9100 -d stockpro_db -f backend/db/seed.sql
 
--- Dev seeded login credentials (DO NOT use in production):
--- 1) admin@acme.local     -> Admin@123
--- 2) employee1@acme.local -> Employee@123
--- 3) admin@nova.local     -> NovaAdmin@123
--- 4) stockpro@admin.com   -> StockPro@Admin2026 (platform/master admin)
--- 5) ayoubchadi@stockpro.com -> StockPro@Admin2026 (platform/master admin)
+-- Dev seeded login credentials (username + password, DO NOT use in production):
+-- 1) stockpro_admin  -> StockPro@Admin2026 (platform/master admin, email: stockpro@admin.com)
+-- 2) ayoub_chadi     -> StockPro@Admin2026 (platform/master admin, email: ayoubchadi@stockpro.com)
+-- 3) acme_admin      -> Admin@123 (tenant admin, email: admin@acme.local)
+-- 4) acme_employee   -> Employee@123 (tenant employee, email: employee1@acme.local)
+-- 5) nova_admin      -> NovaAdmin@123 (tenant admin, email: admin@nova.local)
 -- Password hashes are generated with pgcrypto crypt(..., gen_salt('bf')).
 
 -- Reset auth sessions for seeded accounts so reseeding does not keep stale sessions.
+-- Auth sessions are keyed by email in auth_sessions.
 WITH seeded_auth_emails (email) AS (
   VALUES
     ('admin@acme.local'::citext),

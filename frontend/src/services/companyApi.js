@@ -1,3 +1,5 @@
+import { clearSession } from '../lib/authStore';
+
 const API_BASE_CANDIDATES = Array.from(
   new Set(
     [
@@ -11,6 +13,8 @@ const API_BASE_CANDIDATES = Array.from(
 );
 
 const FALLBACK_STATUS_CODES = new Set([404, 502, 503, 504]);
+const AUTH_ERROR_CODES = new Set(['AUTH_TOKEN_EXPIRED', 'AUTH_TOKEN_INVALID']);
+let isHandlingAuthFailure = false;
 
 async function parseJsonSafe(response) {
   try {
@@ -31,6 +35,65 @@ function resolveErrorMessage(payload, fallback) {
   }
 
   return `${baseMessage}: ${details.join(', ')}`;
+}
+
+function readAuthHeader(headers) {
+  if (!headers) {
+    return '';
+  }
+
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+    return String(headers.get('Authorization') || headers.get('authorization') || '');
+  }
+
+  if (typeof headers === 'object') {
+    return String(headers.Authorization || headers.authorization || '');
+  }
+
+  return '';
+}
+
+function extractErrorCode(payload) {
+  if (!payload) {
+    return '';
+  }
+
+  if (typeof payload === 'string') {
+    try {
+      const parsed = JSON.parse(payload);
+      return String(parsed?.error?.code || '');
+    } catch {
+      return '';
+    }
+  }
+
+  return String(payload?.error?.code || '');
+}
+
+function handleAuthFailure({ response, payload, options }) {
+  if (response.status !== 401) {
+    return;
+  }
+
+  const authHeader = readAuthHeader(options?.headers);
+  if (!authHeader) {
+    return;
+  }
+
+  const errorCode = extractErrorCode(payload);
+  if (!AUTH_ERROR_CODES.has(errorCode)) {
+    return;
+  }
+
+  if (isHandlingAuthFailure) {
+    return;
+  }
+
+  isHandlingAuthFailure = true;
+  clearSession();
+  if (typeof window !== 'undefined') {
+    window.location.replace('/login');
+  }
 }
 
 function shouldRetryWithNextBase({ response, payload }) {
@@ -69,6 +132,8 @@ async function fetchApiEndpoint(path, options, responseKind = 'json') {
       } else if (responseKind === 'text') {
         payload = await response.text();
       }
+
+      handleAuthFailure({ response, payload, options });
 
       lastResponse = response;
       lastPayload = payload;
@@ -148,6 +213,7 @@ export async function createCompanyEmployee({
   email,
   username,
   password,
+  role,
   presetKey,
   permissions,
 }) {
@@ -159,6 +225,7 @@ export async function createCompanyEmployee({
       email,
       username,
       password,
+      role,
       presetKey,
       permissions,
     }),

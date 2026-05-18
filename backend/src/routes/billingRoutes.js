@@ -341,7 +341,7 @@ function getFallbackPlans() {
       name: 'Growth 50',
       monthlyPriceCents: 14900,
       currencyCode: 'EUR',
-      
+
       maxEmployees: 50,
       features: {
         canExportReports: true,
@@ -987,16 +987,6 @@ router.post('/paypal/orders/:orderId/capture', async (request, response, next) =
         return;
       }
 
-      if (error.constraint === 'uq_users_one_active_admin_per_company') {
-        next(
-          new HttpError(
-            409,
-            'BILLING_COMPANY_ADMIN_EXISTS',
-            'This company already has an active admin account'
-          )
-        );
-        return;
-      }
     }
 
     if (error?.code === '42501') {

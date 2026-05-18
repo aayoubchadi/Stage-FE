@@ -3486,6 +3486,28 @@ main#top.contact-page>.section+.section {
   color: #0e8a64;
 }
 
+.toast-notification {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 9999;
+  max-width: 360px;
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.18);
+}
+
+@media (max-width: 640px) {
+  .toast-notification {
+    left: 16px;
+    right: 16px;
+    max-width: none;
+  }
+}
+
 .auth-hint {
   margin: 0 0 12px;
   color: var(--ink-500);
@@ -5109,6 +5131,14 @@ main#top.contact-page>.section+.section {
   background: #0f182e;
 }
 
+:root[data-theme='dark'] .dashboard-head {
+  background:
+    radial-gradient(circle at 18% 22%, rgba(95, 140, 255, 0.2), transparent 46%),
+    linear-gradient(135deg, #141f36 0%, #101a2f 100%);
+  border-color: var(--line);
+  box-shadow: var(--shadow-sm);
+}
+
 :root[data-theme='dark'] .checkout-wrap,
 :root[data-theme='dark'] .checkout-panel,
 :root[data-theme='dark'] .checkout-form input,
@@ -5224,6 +5254,119 @@ main#top.contact-page>.section+.section {
   color: #79eac3;
 }
 
+:root[data-theme='dark'] .toast-notification {
+  background: #0f172a;
+  border-color: #1f2a44;
+  box-shadow: 0 18px 40px rgba(5, 10, 20, 0.55);
+}
+
 :root[data-theme='dark'] .lp-value-head.section-head h2 {
   color: #1f3f79;
+}
+
+/* Logged-in pages (dashboard, inventory, team, orders, reports) */
+:root[data-theme='dark'] .dashboard-page .bg-white {
+  background-color: var(--surface);
+}
+
+:root[data-theme='dark'] .dashboard-page .bg-white\/50 {
+  background-color: rgba(17, 26, 46, 0.7);
+}
+
+:root[data-theme='dark'] .dashboard-page .bg-slate-50 {
+  background-color: #121d36;
+}
+
+:root[data-theme='dark'] .dashboard-page .bg-slate-100 {
+  background-color: #1b2a46;
+}
+
+:root[data-theme='dark'] .dashboard-page .bg-amber-50 {
+  background-color: rgba(248, 197, 81, 0.18);
+}
+
+:root[data-theme='dark'] .dashboard-page .bg-green-50 {
+  background-color: rgba(72, 199, 142, 0.18);
+}
+
+:root[data-theme='dark'] .dashboard-page .bg-red-50 {
+  background-color: rgba(248, 113, 113, 0.18);
+}
+
+:root[data-theme='dark'] .dashboard-page .bg-blue-50 {
+  background-color: rgba(96, 165, 250, 0.18);
+}
+
+:root[data-theme='dark'] .dashboard-page .bg-purple-50 {
+  background-color: rgba(168, 85, 247, 0.18);
+}
+
+:root[data-theme='dark'] .dashboard-page .border-slate-200,
+:root[data-theme='dark'] .dashboard-page .border-slate-300 {
+  border-color: var(--line);
+}
+
+:root[data-theme='dark'] .dashboard-page .border-amber-200 {
+  border-color: rgba(255, 206, 107, 0.35);
+}
+
+:root[data-theme='dark'] .dashboard-page .text-slate-900,
+:root[data-theme='dark'] .dashboard-page .text-slate-800 {
+  color: var(--ink-900);
+}
+
+:root[data-theme='dark'] .dashboard-page .text-slate-700,
+:root[data-theme='dark'] .dashboard-page .text-slate-600 {
+  color: var(--ink-700);
+}
+
+:root[data-theme='dark'] .dashboard-page .text-slate-500,
+:root[data-theme='dark'] .dashboard-page .text-slate-400 {
+  color: var(--ink-500);
+}
+
+:root[data-theme='dark'] .dashboard-page .text-amber-900 {
+  color: #f7d889;
+}
+
+:root[data-theme='dark'] .dashboard-page .text-amber-700 {
+  color: #f3c264;
+}
+
+:root[data-theme='dark'] .dashboard-page .text-amber-600 {
+  color: #f0b14d;
+}
+
+:root[data-theme='dark'] .dashboard-page .text-green-600 {
+  color: #6ee7b7;
+}
+
+:root[data-theme='dark'] .dashboard-page .text-red-600 {
+  color: #f39b9b;
+}
+
+:root[data-theme='dark'] .dashboard-page .text-blue-600 {
+  color: #9bbcff;
+}
+
+:root[data-theme='dark'] .dashboard-page .text-purple-600 {
+  color: #c1a7ff;
+}
+
+:root[data-theme='dark'] .dashboard-page .hover\:bg-slate-50:hover {
+  background-color: #162541;
+}
+
+.team-add-button {
+  background: linear-gradient(120deg, var(--brand-500), var(--brand-600));
+  color: #fff;
+  box-shadow: 0 14px 26px rgba(47, 102, 255, 0.28);
+}
+
+.team-add-button:hover {
+  background: linear-gradient(120deg, var(--brand-600), var(--brand-500));
+}
+
+:root[data-theme='dark'] .team-add-button {
+  box-shadow: 0 16px 28px rgba(63, 111, 232, 0.35);
 }
