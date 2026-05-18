@@ -28,7 +28,25 @@ accounts.txt
 frontend-backup-*/
 frontend/backup-*/
 
-.svg
-.png
-.jpg
-.tex
+# LaTeX files and generated outputs
+*.tex
+*.pdf
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.bbl
+*.blg
+rapport.*
+
+# Project assets (documentation and diagrams)
+images/
+diagrams/
+
+# Image files
+*.svg
+*.png
+*.jpg
+*.jpeg
