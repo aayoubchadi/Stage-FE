@@ -105,39 +105,47 @@ export default function ClientDashboardPage() {
         {isLoading ? <p className="dashboard-state">Loading dashboard metrics...</p> : null}
         {!isLoading && errorMessage ? <p className="form-message error">{errorMessage}</p> : null}
 
-        {!isLoading && !errorMessage ? (
-          <StockProDashboardStats overview={overview} />
-        ) : null}
-
         {!isLoading && !errorMessage && overview ? (
           <>
             <section className="dashboard-grid dashboard-grid-client">
-              <article className="dashboard-box"><h3>Stock units</h3><p>{metrics.stockUnits || 0}</p></article>
               <article className="dashboard-box"><h3>Low stock products</h3><p>{metrics.lowStockProducts || 0}</p></article>
-              <article className="dashboard-box"><h3>Inbound (30d)</h3><p>{metrics.movementIn30d || 0}</p></article>
-              <article className="dashboard-box"><h3>Outbound (30d)</h3><p>{metrics.movementOut30d || 0}</p></article>
+              <article className="dashboard-box"><h3>Total products</h3><p>{metrics.totalProducts || 0}</p></article>
             </section>
 
             <section className="dashboard-grid dashboard-grid-split">
               <article className="dashboard-box dashboard-list-box">
-                <h3>Top inventory by value</h3>
+                <h3>Best Selling Products</h3>
                 <ul className="dashboard-list">
-                  {(overview.topProducts || []).map((product) => (
+                  {(overview.bestSellingProducts || []).map((product) => (
                     <li key={product.id}>
                       <strong>{product.name} ({product.sku})</strong>
-                      <span>{product.quantityInStock} units in stock</span>
+                      <span>{product.salesCount || 0} units sold</span>
                     </li>
                   ))}
                 </ul>
               </article>
 
               <article className="dashboard-box dashboard-list-box">
-                <h3>Recent movements</h3>
+                <h3>Worst Selling Products</h3>
                 <ul className="dashboard-list">
-                  {(overview.recentMovements || []).map((movement) => (
-                    <li key={movement.id}>
-                      <strong>{movement.productName} • {movement.movementType}</strong>
-                      <span>{movement.quantity} units • {formatDate(movement.createdAt)} • by {movement.movedByName}</span>
+                  {(overview.worstSellingProducts || []).map((product) => (
+                    <li key={product.id}>
+                      <strong>{product.name} ({product.sku})</strong>
+                      <span>{product.salesCount || 0} units sold • Low demand</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            </section>
+
+            <section className="dashboard-grid">
+              <article className="dashboard-box dashboard-list-box">
+                <h3>Products Needing Reorder (Low Stock)</h3>
+                <ul className="dashboard-list">
+                  {(overview.lowStockAlert || []).map((product) => (
+                    <li key={product.id}>
+                      <strong>{product.name} ({product.sku})</strong>
+                      <span>{product.quantityInStock || 0} units in stock • Reorder needed</span>
                     </li>
                   ))}
                 </ul>

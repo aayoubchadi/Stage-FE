@@ -652,8 +652,8 @@ export default function TeamAccessPage() {
                     <Button variant="outline" type="button" onClick={closeEditDialog} className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
                       Cancel
                     </Button>
-                    <Button onClick={handleUpdateEmployee} disabled={isUpdating} className="bg-blue-600 text-white hover:bg-blue-700">
-                      {isUpdating ? 'Saving...' : 'Save Changes'}
+                    <Button onClick={handleUpdateEmployee} disabled={isUpdating} className="bg-slate-900 text-white hover:bg-slate-800">
+                      {isUpdating ? 'Saving...' : 'Confirm'}
                     </Button>
                   </div>
                 </div>

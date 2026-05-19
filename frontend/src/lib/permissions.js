@@ -12,6 +12,21 @@ export const PERMISSION_KEYS = [
 
 export const PERMISSION_PRESETS = [
   {
+    key: 'admin',
+    label: 'Admin',
+    permissions: [
+      'employees.view',
+      'employees.manage',
+      'inventory.view',
+      'inventory.manage',
+      'stock.move',
+      'receipts.create',
+      'data.import',
+      'data.export',
+      'reports.view',
+    ],
+  },
+  {
     key: 'warehouse_operator',
     label: 'Warehouse Operator',
     permissions: ['inventory.view', 'stock.move'],
