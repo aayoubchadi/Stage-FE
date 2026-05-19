@@ -21,6 +21,16 @@ function formatDisplayRole(role) {
   return normalizedRole === 'employee' ? 'employee' : 'admin';
 }
 
+function toProductMapEntry(product) {
+  return {
+    id: product?.id,
+    sku: product?.sku || '-',
+    name: product?.name || 'Unknown product',
+    salesCount: Number(product?.salesCount || 0),
+    quantityInStock: Number(product?.quantityInStock || 0),
+  };
+}
+
 export default function ClientDashboardPage() {
   const { t } = useLanguage();
   const [session, setSession] = useState(null);
@@ -83,6 +93,15 @@ export default function ClientDashboardPage() {
   const userName = session?.fullName || session?.user?.fullName || 'Employee';
   const userRole = formatDisplayRole(session?.role || session?.user?.role || 'employee');
   const metrics = overview?.metrics || {};
+  const bestSellingProducts = Array.isArray(overview?.bestSellingProducts)
+    ? overview.bestSellingProducts.map(toProductMapEntry)
+    : [];
+  const worstSellingProducts = Array.isArray(overview?.worstSellingProducts)
+    ? overview.worstSellingProducts.map(toProductMapEntry)
+    : [];
+  const lowStockProducts = Array.isArray(overview?.lowStockProducts)
+    ? overview.lowStockProducts
+    : [];
 
   return (
     <>
@@ -116,7 +135,7 @@ export default function ClientDashboardPage() {
               <article className="dashboard-box dashboard-list-box">
                 <h3>Best Selling Products</h3>
                 <ul className="dashboard-list">
-                  {(overview.bestSellingProducts || []).map((product) => (
+                  {bestSellingProducts.map((product) => (
                     <li key={product.id}>
                       <strong>{product.name} ({product.sku})</strong>
                       <span>{product.salesCount || 0} units sold</span>
@@ -128,7 +147,7 @@ export default function ClientDashboardPage() {
               <article className="dashboard-box dashboard-list-box">
                 <h3>Worst Selling Products</h3>
                 <ul className="dashboard-list">
-                  {(overview.worstSellingProducts || []).map((product) => (
+                  {worstSellingProducts.map((product) => (
                     <li key={product.id}>
                       <strong>{product.name} ({product.sku})</strong>
                       <span>{product.salesCount || 0} units sold • Low demand</span>
@@ -142,7 +161,7 @@ export default function ClientDashboardPage() {
               <article className="dashboard-box dashboard-list-box">
                 <h3>Products Needing Reorder (Low Stock)</h3>
                 <ul className="dashboard-list">
-                  {(overview.lowStockAlert || []).map((product) => (
+                  {lowStockProducts.map((product) => (
                     <li key={product.id}>
                       <strong>{product.name} ({product.sku})</strong>
                       <span>{product.quantityInStock || 0} units in stock • Reorder needed</span>

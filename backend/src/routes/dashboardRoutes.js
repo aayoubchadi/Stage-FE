@@ -167,6 +167,64 @@ async function buildTenantOverview(companyId) {
       [companyId]
     );
 
+    const { rows: bestSellingRows } = await client.query(
+      `SELECT
+         p.id,
+         p.sku,
+         p.name,
+         p.quantity_in_stock,
+         COALESCE(SUM(sm.quantity), 0) AS sales_count
+       FROM products p
+       LEFT JOIN stock_movements sm
+         ON sm.product_id = p.id
+        AND sm.company_id = p.company_id
+        AND sm.movement_type = 'out'
+        AND sm.created_at >= NOW() - INTERVAL '30 days'
+       WHERE p.company_id = $1
+         AND p.is_active = TRUE
+       GROUP BY p.id, p.sku, p.name, p.quantity_in_stock
+       ORDER BY sales_count DESC, p.name ASC
+       LIMIT 5`,
+      [companyId]
+    );
+
+    const { rows: worstSellingRows } = await client.query(
+      `WITH product_sales AS (
+         SELECT
+           p.id,
+           p.sku,
+           p.name,
+           p.quantity_in_stock,
+           COALESCE(SUM(sm.quantity), 0) AS sales_count
+         FROM products p
+         LEFT JOIN stock_movements sm
+           ON sm.product_id = p.id
+          AND sm.company_id = p.company_id
+          AND sm.movement_type = 'out'
+          AND sm.created_at >= NOW() - INTERVAL '30 days'
+         WHERE p.company_id = $1
+           AND p.is_active = TRUE
+         GROUP BY p.id, p.sku, p.name, p.quantity_in_stock
+       ),
+       sales_summary AS (
+         SELECT COALESCE(AVG(sales_count), 0) AS avg_sales_count
+         FROM product_sales
+       )
+       SELECT
+         ps.id,
+         ps.sku,
+         ps.name,
+         ps.quantity_in_stock,
+         ps.sales_count
+       FROM product_sales ps
+       CROSS JOIN sales_summary ss
+       WHERE ps.sales_count = 0
+          OR ps.sales_count <= ss.avg_sales_count
+       ORDER BY ps.sales_count ASC, ps.name ASC
+       LIMIT 5`,
+      [companyId]
+    );
+
     const { rows: joinRequestRows } = await client.query(
       `SELECT
          id,
@@ -256,6 +314,20 @@ async function buildTenantOverview(companyId) {
         quantityInStock: toNumber(row.quantity_in_stock),
         unitPrice: toNumber(row.unit_price),
         stockValue: toNumber(row.stock_value),
+      })),
+      bestSellingProducts: bestSellingRows.map((row) => ({
+        id: row.id,
+        sku: row.sku,
+        name: row.name,
+        quantityInStock: toNumber(row.quantity_in_stock),
+        salesCount: toNumber(row.sales_count),
+      })),
+      worstSellingProducts: worstSellingRows.map((row) => ({
+        id: row.id,
+        sku: row.sku,
+        name: row.name,
+        quantityInStock: toNumber(row.quantity_in_stock),
+        salesCount: toNumber(row.sales_count),
       })),
       pendingJoinRequests: joinRequestRows.map((row) => ({
         id: row.id,
